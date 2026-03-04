@@ -1,5 +1,41 @@
 import Foundation
 
+public struct PluginManifest: Codable, Sendable {
+    public let info: PluginInfo
+
+    public init(info: PluginInfo) {
+        self.info = info
+    }
+}
+
+public struct PluginInfo: Codable, Sendable {
+    public let id: String
+    public let name: String
+    public let version: Int
+    public let url: String?
+    public let sourceUrl: String?
+    public let contentRating: ContentRating?
+    public let nsfw: Int?
+    public let language: String?
+    public let languages: [String]?
+
+    public init(
+        id: String, name: String, version: Int, url: String? = nil,
+        sourceUrl: String? = nil, contentRating: ContentRating? = nil,
+        nsfw: Int? = nil, language: String? = nil, languages: [String]? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.version = version
+        self.url = url
+        self.sourceUrl = sourceUrl
+        self.contentRating = contentRating
+        self.nsfw = nsfw
+        self.language = language
+        self.languages = languages
+    }
+}
+
 public enum MangaStatus: Int32, Codable, Sendable {
     case Unknown = 0
     case Ongoing = 1
