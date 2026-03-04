@@ -242,6 +242,9 @@ public actor ItoRunner {
         async throws -> Manga
     {
         let mBytes = try self.postcardEncoder.encode(manga)
+        let hexString = mBytes.map { String(format: "%02x", $0) }.joined()
+        print("[DEBUG] getMangaUpdate Swift Manga Payload (len \(mBytes.count)): \(hexString)")
+
         let mInfo = try allocBytes(mBytes)
 
         let result = try self.executeExport(

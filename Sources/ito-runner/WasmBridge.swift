@@ -98,11 +98,17 @@ public class WasmBridge {
                 }
                 sem.wait()
 
+                let response: NetResponse
                 if let error = box.error {
-                    fatalError("FFI Error in net_fetch: \(error)")  // Will trap the Wasm module
+                    let errMsg = "FFI Error in net_fetch: \(error.localizedDescription)"
+                    response = NetResponse(
+                        status: 500,
+                        headers: ["Content-Type": "text/plain"],
+                        body: Array(errMsg.utf8)
+                    )
+                } else {
+                    response = box.response!
                 }
-
-                let response = box.response!
                 let responseBytes = try self.runner.postcardEncoder.encode(response)
 
                 guard let alloc = caller.instance?.exports[function: "alloc"] else {

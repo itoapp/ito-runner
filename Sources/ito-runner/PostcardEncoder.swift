@@ -112,10 +112,18 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
 
         if let value = value {
             var container = encoder.singleValueContainer()
-            // We write a 1 bit, but wait, `T?` encoding already writes the `1` bit when we delegate!
-            // Actually, if we just call `try value.encode(to: encoder)`, it treats `value` as the unwrapped type,
-            // dropping the Optional wrapper. We MUST encode the `1` (Some) flag first.
             try container.encode(true)
+
+            if let map = value as? PostcardMapMarker {
+                try map.encodePostcardMap(to: encoder)
+                return
+            }
+
+            if let array = value as? PostcardArrayMarker {
+                var single = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
+                try single.encodeVarint(UInt64(array.postcardCount))
+            }
+
             try value.encode(to: encoder)
         } else {
             var container = encoder.singleValueContainer()
