@@ -45,7 +45,7 @@ public protocol HtmlModule: Sendable {
 // MARK: - JS Module
 
 public protocol JsModule: Sendable {
-    func evaluate(script: String) async throws -> String
+    func evaluate(script: String) throws -> String
 }
 
 // MARK: - Std Module

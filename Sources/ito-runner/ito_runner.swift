@@ -156,4 +156,111 @@ public actor ItoRunner {
             throw ItoError.wasmTrap("Execution of '\(name)' failed: \(error.localizedDescription)")
         }
     }
+
+    // MARK: - Core Execution API
+
+    /// Executes `get_manga_list(filters: [FilterStruct], page: Int32)`
+    public func getMangaList(filters: [FilterStruct], page: Int32) async throws -> MangaPageResult {
+        let requestBytes = try self.postcardEncoder.encode(filters)
+        let pageArg = page
+
+        // Ask Wasm to allocate memory for the request
+        let allocResult = try self.executeExport("alloc", args: [.i32(UInt32(requestBytes.count))])
+        guard let pointerVal = allocResult.first, case .i32(let pointer) = pointerVal else {
+            throw ItoError.wasmTrap("Failed to allocate memory for request")
+        }
+
+        // Write request to memory
+        try self.writeMemory(offset: Int(pointer), bytes: Array(requestBytes))
+
+        // Execute function
+        let result = try self.executeExport(
+            "get_manga_list",
+            args: [
+                .i32(pointer), .i32(UInt32(requestBytes.count)), .i32(UInt32(bitPattern: pageArg)),
+            ])
+
+        // Parse packed ptr | len pair
+        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+        }
+
+        let responseLen = Int(packed & 0xFFFF_FFFF)
+        let responsePtr = Int(packed >> 32)
+
+        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+        return try self.postcardDecoder.decode(MangaPageResult.self, from: responseBytes)
+    }
+
+    /// Executes `get_manga_details(id: String)`
+    public func getMangaDetails(id: String) async throws -> Manga {
+        let requestBytes = try self.postcardEncoder.encode(id)
+
+        let allocResult = try self.executeExport("alloc", args: [.i32(UInt32(requestBytes.count))])
+        guard let pointerVal = allocResult.first, case .i32(let pointer) = pointerVal else {
+            throw ItoError.wasmTrap("Failed to allocate memory for request")
+        }
+
+        try self.writeMemory(offset: Int(pointer), bytes: Array(requestBytes))
+        let result = try self.executeExport(
+            "get_manga_details", args: [.i32(pointer), .i32(UInt32(requestBytes.count))])
+
+        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+        }
+
+        let responseLen = Int(packed & 0xFFFF_FFFF)
+        let responsePtr = Int(packed >> 32)
+
+        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+        return try self.postcardDecoder.decode(Manga.self, from: responseBytes)
+    }
+
+    /// Executes `get_chapter_list(id: String)`
+    public func getChapterList(id: String) async throws -> [Chapter] {
+        let requestBytes = try self.postcardEncoder.encode(id)
+
+        let allocResult = try self.executeExport("alloc", args: [.i32(UInt32(requestBytes.count))])
+        guard let pointerVal = allocResult.first, case .i32(let pointer) = pointerVal else {
+            throw ItoError.wasmTrap("Failed to allocate memory for request")
+        }
+
+        try self.writeMemory(offset: Int(pointer), bytes: Array(requestBytes))
+        let result = try self.executeExport(
+            "get_chapter_list", args: [.i32(pointer), .i32(UInt32(requestBytes.count))])
+
+        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+        }
+
+        let responseLen = Int(packed & 0xFFFF_FFFF)
+        let responsePtr = Int(packed >> 32)
+
+        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+        return try self.postcardDecoder.decode([Chapter].self, from: responseBytes)
+    }
+
+    /// Executes `get_page_list(id: String)`
+    public func getPageList(id: String) async throws -> [Page] {
+        let requestBytes = try self.postcardEncoder.encode(id)
+
+        let allocResult = try self.executeExport("alloc", args: [.i32(UInt32(requestBytes.count))])
+        guard let pointerVal = allocResult.first, case .i32(let pointer) = pointerVal else {
+            throw ItoError.wasmTrap("Failed to allocate memory for request")
+        }
+
+        try self.writeMemory(offset: Int(pointer), bytes: Array(requestBytes))
+        let result = try self.executeExport(
+            "get_page_list", args: [.i32(pointer), .i32(UInt32(requestBytes.count))])
+
+        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+        }
+
+        let responseLen = Int(packed & 0xFFFF_FFFF)
+        let responsePtr = Int(packed >> 32)
+
+        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+        return try self.postcardDecoder.decode([Page].self, from: responseBytes)
+    }
 }

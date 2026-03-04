@@ -282,6 +282,170 @@ public class WasmBridge {
             return []
         }
 
+        let jsEvaluate = Function(store: store, parameters: [.i32, .i32], results: [.i64]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let requestPtr = args[0].i32
+            let requestLen = args[1].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"],
+                let alloc = caller.instance?.exports[function: "alloc"]
+            else {
+                fatalError("Plugin must export memory and alloc")
+            }
+
+            let scriptString = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(requestPtr), count: Int(requestLen)
+            ) { buffer in
+                String(decoding: buffer, as: UTF8.self)
+            }
+
+            guard let module = self.jsModule else {
+                throw ItoError.hostModuleError(domain: "js", message: "JsModule not provided")
+            }
+
+            let resultString = try module.evaluate(script: scriptString)
+            let responseBytes = try self.runner.postcardEncoder.encode(resultString)
+
+            let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
+            let responsePtr = allocResult[0].i32
+
+            memory.withUnsafeMutableBufferPointer(
+                offset: UInt(responsePtr), count: responseBytes.count
+            ) { buffer in
+                responseBytes.withUnsafeBytes { src in
+                    buffer.copyMemory(from: UnsafeRawBufferPointer(src))
+                }
+            }
+
+            let packed = (UInt64(responsePtr) << 32) | UInt64(UInt32(responseBytes.count))
+            return [.i64(packed)]
+        }
+
+        let stdPrint = Function(store: store, parameters: [.i32, .i32], results: []) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let requestPtr = args[0].i32
+            let requestLen = args[1].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Plugin must export memory")
+            }
+
+            let string = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(requestPtr), count: Int(requestLen)
+            ) { buffer in
+                String(decoding: buffer, as: UTF8.self)
+            }
+
+            guard let module = self.stdModule else {
+                throw ItoError.hostModuleError(domain: "std", message: "StdModule not provided")
+            }
+
+            module.print(message: string)
+            return []
+        }
+
+        let defaultsSet = Function(store: store, parameters: [.i32, .i32, .i32, .i32], results: [])
+        {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let keyPtr = args[0].i32
+            let keyLen = args[1].i32
+            let valPtr = args[2].i32
+            let valLen = args[3].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Plugin must export memory")
+            }
+
+            let key = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(keyPtr), count: Int(keyLen)
+            ) { buffer in
+                String(decoding: buffer, as: UTF8.self)
+            }
+
+            let val = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(valPtr), count: Int(valLen)
+            ) { buffer in
+                String(decoding: buffer, as: UTF8.self)
+            }
+
+            guard let module = self.defaultsModule else {
+                throw ItoError.hostModuleError(
+                    domain: "defaults", message: "DefaultsModule not provided")
+            }
+
+            module.set(key: key, value: val)
+            return []
+        }
+
+        let defaultsGet = Function(store: store, parameters: [.i32, .i32], results: [.i64]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let keyPtr = args[0].i32
+            let keyLen = args[1].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"],
+                let alloc = caller.instance?.exports[function: "alloc"]
+            else {
+                fatalError("Plugin must export memory and alloc")
+            }
+
+            let key = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(keyPtr), count: Int(keyLen)
+            ) { buffer in
+                String(decoding: buffer, as: UTF8.self)
+            }
+
+            guard let module = self.defaultsModule else {
+                throw ItoError.hostModuleError(
+                    domain: "defaults", message: "DefaultsModule not provided")
+            }
+
+            let val = module.get(key: key)
+            let responseBytes = try self.runner.postcardEncoder.encode(val)
+
+            let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
+            let responsePtr = allocResult[0].i32
+
+            memory.withUnsafeMutableBufferPointer(
+                offset: UInt(responsePtr), count: responseBytes.count
+            ) { buffer in
+                responseBytes.withUnsafeBytes { src in
+                    buffer.copyMemory(from: UnsafeRawBufferPointer(src))
+                }
+            }
+
+            let packed = (UInt64(responsePtr) << 32) | UInt64(UInt32(responseBytes.count))
+            return [.i64(packed)]
+        }
+
+        let defaultsRemove = Function(store: store, parameters: [.i32, .i32], results: []) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let keyPtr = args[0].i32
+            let keyLen = args[1].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Plugin must export memory")
+            }
+
+            let key = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(keyPtr), count: Int(keyLen)
+            ) { buffer in
+                String(decoding: buffer, as: UTF8.self)
+            }
+
+            guard let module = self.defaultsModule else {
+                throw ItoError.hostModuleError(
+                    domain: "defaults", message: "DefaultsModule not provided")
+            }
+
+            module.remove(key: key)
+            return []
+        }
+
         let imports: Imports = [
             "ito:core/net": ["fetch": netFetch],
             "ito:core/html": [
@@ -290,6 +454,13 @@ public class WasmBridge {
                 "text": htmlText,
                 "attr": htmlAttr,
                 "free": htmlFree,
+            ],
+            "ito:core/js": ["evaluate": jsEvaluate],
+            "ito:core/std": ["print": stdPrint],
+            "ito:core/defaults": [
+                "set": defaultsSet,
+                "get": defaultsGet,
+                "remove": defaultsRemove,
             ],
         ]
 
