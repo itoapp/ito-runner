@@ -107,7 +107,7 @@ struct AtsumaruScraperTests {
     }
 
     func buildMangaFromDoc(_ doc: SearchDocument) -> Manga {
-        var status: MangaStatus = .Unknown
+        var status: Manga.Status = .Unknown
         switch doc.status {
         case "Ongoing": status = .Ongoing
         case "Completed": status = .Completed
@@ -127,7 +127,7 @@ struct AtsumaruScraperTests {
             url: "\(baseURL)/manga/\(doc.id ?? "")",
             status: status,
             contentRating: .Safe,
-            viewer: 2  // Webtoon
+            viewer: .Webtoon
         )
     }
 
@@ -184,7 +184,8 @@ struct AtsumaruScraperTests {
         let mangaId = "TKRmo"
         var manga = Manga(
             key: mangaId, title: "", authors: nil, artist: nil, description: nil,
-            tags: nil, cover: nil, url: nil, status: .Unknown, contentRating: .Safe, viewer: 2)
+            tags: nil, cover: nil, url: nil, status: .Unknown, contentRating: .Safe, nsfw: 0,
+            viewer: .Default)
 
         // 1. Fetch Details
         let detailURL = "\(apiBase)/manga/page?id=\(mangaId)"
@@ -197,11 +198,11 @@ struct AtsumaruScraperTests {
         manga.url = "\(baseURL)/manga/\(detail.id ?? "")"
 
         switch detail.status {
-        case "Ongoing": manga.status = MangaStatus.Ongoing
-        case "Completed": manga.status = MangaStatus.Completed
-        case "Hiatus": manga.status = MangaStatus.Hiatus
-        case "Dropped", "Cancelled": manga.status = MangaStatus.Cancelled
-        default: manga.status = MangaStatus.Unknown
+        case "Ongoing": manga.status = Manga.Status.Ongoing
+        case "Completed": manga.status = Manga.Status.Completed
+        case "Hiatus": manga.status = Manga.Status.Hiatus
+        case "Dropped", "Cancelled": manga.status = Manga.Status.Cancelled
+        default: manga.status = Manga.Status.Unknown
         }
 
         let authors = (detail.authors ?? []).compactMap { $0.name }
@@ -229,13 +230,13 @@ struct AtsumaruScraperTests {
         let chaptersURL = "\(apiBase)/manga/allChapters?mangaId=\(mangaId)"
         let chaptersResponse: ChapterListResponse = try await fetchJSON(chaptersURL)
 
-        var chapters: [Chapter] = []
+        var chapters: [Manga.Chapter] = []
         for chap in chaptersResponse.chapters {
             let chapterUrl = "\(baseURL)/read/\(mangaId)?chapterId=\(chap.id)"
             let scanlatorName = chap.scanlationMangaId.flatMap { scanlatorMap[$0] }
 
-            chapters.push(
-                Chapter(
+            chapters.append(
+                Manga.Chapter(
                     key: chap.id,
                     title: chap.title,
                     volume: nil,
@@ -243,7 +244,8 @@ struct AtsumaruScraperTests {
                     dateUpdated: Double(chap.createdAt) / 1000.0,
                     scanlator: scanlatorName,
                     url: chapterUrl,
-                    lang: "en"
+                    lang: "en",
+                    paywalled: nil
                 ))
         }
 

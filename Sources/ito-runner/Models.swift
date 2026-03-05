@@ -8,6 +8,11 @@ public struct PluginManifest: Codable, Sendable {
     }
 }
 
+public enum PluginType: String, Codable, Sendable {
+    case manga
+    case anime
+}
+
 public struct PluginInfo: Codable, Sendable {
     public let id: String
     public let name: String
@@ -18,11 +23,13 @@ public struct PluginInfo: Codable, Sendable {
     public let nsfw: Int?
     public let language: String?
     public let languages: [String]?
+    public let type: PluginType  // Manga by default or from JSON
 
     public init(
         id: String, name: String, version: Int, url: String? = nil,
         sourceUrl: String? = nil, contentRating: ContentRating? = nil,
-        nsfw: Int? = nil, language: String? = nil, languages: [String]? = nil
+        nsfw: Int? = nil, language: String? = nil, languages: [String]? = nil,
+        type: PluginType = .manga
     ) {
         self.id = id
         self.name = name
@@ -33,15 +40,8 @@ public struct PluginInfo: Codable, Sendable {
         self.nsfw = nsfw
         self.language = language
         self.languages = languages
+        self.type = type
     }
-}
-
-public enum MangaStatus: Int32, Codable, Sendable {
-    case Unknown = 0
-    case Ongoing = 1
-    case Completed = 2
-    case Cancelled = 3
-    case Hiatus = 4
 }
 
 public enum ContentRating: Int32, Codable, Sendable {
@@ -51,6 +51,60 @@ public enum ContentRating: Int32, Codable, Sendable {
 }
 
 public struct Manga: Codable, Sendable {
+    public enum Status: Int32, Codable, Sendable {
+        case Unknown = 0
+        case Ongoing = 1
+        case Completed = 2
+        case Cancelled = 3
+        case Hiatus = 4
+    }
+
+    public enum Viewer: Int32, Codable, Sendable {
+        case Default = 0
+        case Rtl = 1
+        case Ltr = 2
+        case Vertical = 3
+        case Webtoon = 4
+    }
+
+    public struct PageResult: Codable, Sendable {
+        public var entries: [Manga]
+        public var hasNextPage: Bool
+
+        public init(entries: [Manga], hasNextPage: Bool) {
+            self.entries = entries
+            self.hasNextPage = hasNextPage
+        }
+    }
+
+    public struct Chapter: Codable, Sendable {
+        public var key: String
+        public var title: String?
+        public var volume: Float32?
+        public var chapter: Float32?
+        public var dateUpdated: Double?  // Option<f64>
+        public var scanlator: String?
+        public var url: String?
+        public var lang: String?
+        public var paywalled: Bool?
+
+        public init(
+            key: String, title: String? = nil, volume: Float32? = nil, chapter: Float32? = nil,
+            dateUpdated: Double? = nil, scanlator: String? = nil, url: String? = nil,
+            lang: String? = nil, paywalled: Bool? = nil
+        ) {
+            self.key = key
+            self.title = title
+            self.volume = volume
+            self.chapter = chapter
+            self.dateUpdated = dateUpdated
+            self.scanlator = scanlator
+            self.url = url
+            self.lang = lang
+            self.paywalled = paywalled
+        }
+    }
+
     public var key: String
     public var title: String
     public var authors: [String]?
@@ -59,17 +113,17 @@ public struct Manga: Codable, Sendable {
     public var tags: [String]?
     public var cover: String?
     public var url: String?
-    public var status: MangaStatus
+    public var status: Status
     public var contentRating: ContentRating
     public var nsfw: Int32
-    public var viewer: Int32
+    public var viewer: Viewer
     public var chapters: [Chapter]?
 
     public init(
         key: String, title: String, authors: [String]? = nil, artist: String? = nil,
         description: String? = nil, tags: [String]? = nil, cover: String? = nil, url: String? = nil,
-        status: MangaStatus = .Unknown, contentRating: ContentRating = .Safe, nsfw: Int32 = 0,
-        viewer: Int32 = 0, chapters: [Chapter]? = nil
+        status: Status = .Unknown, contentRating: ContentRating = .Safe, nsfw: Int32 = 0,
+        viewer: Viewer = .Default, chapters: [Chapter]? = nil
     ) {
         self.key = key
         self.title = title
@@ -84,42 +138,6 @@ public struct Manga: Codable, Sendable {
         self.nsfw = nsfw
         self.viewer = viewer
         self.chapters = chapters
-    }
-}
-
-public struct MangaPageResult: Codable, Sendable {
-    public var entries: [Manga]
-    public var hasNextPage: Bool
-
-    public init(entries: [Manga], hasNextPage: Bool) {
-        self.entries = entries
-        self.hasNextPage = hasNextPage
-    }
-}
-
-public struct Chapter: Codable, Sendable {
-    public var key: String
-    public var title: String?
-    public var volume: Float32?
-    public var chapter: Float32?
-    public var dateUpdated: Double?  // Option<f64>
-    public var scanlator: String?
-    public var url: String?
-    public var lang: String?
-
-    public init(
-        key: String, title: String? = nil, volume: Float32? = nil, chapter: Float32? = nil,
-        dateUpdated: Double? = nil, scanlator: String? = nil, url: String? = nil,
-        lang: String? = nil
-    ) {
-        self.key = key
-        self.title = title
-        self.volume = volume
-        self.chapter = chapter
-        self.dateUpdated = dateUpdated
-        self.scanlator = scanlator
-        self.url = url
-        self.lang = lang
     }
 }
 
@@ -262,6 +280,7 @@ public struct Link: Codable, Sendable {
 public enum LinkValue: Codable, Sendable {
     case url(String)
     case manga(Manga)
+    case anime(Anime)
     case listing(Listing)
 
     public init(from decoder: Decoder) throws {
@@ -270,7 +289,8 @@ public enum LinkValue: Codable, Sendable {
         switch variant {
         case 0: self = .url(try container.decode(String.self))
         case 1: self = .manga(try container.decode(Manga.self))
-        case 2: self = .listing(try container.decode(Listing.self))
+        case 2: self = .anime(try container.decode(Anime.self))
+        case 3: self = .listing(try container.decode(Listing.self))
         default:
             throw DecodingError.dataCorruptedError(
                 in: container, debugDescription: "Unknown LinkValue variant")
@@ -286,8 +306,11 @@ public enum LinkValue: Codable, Sendable {
         case .manga(let m):
             try container.encode(1 as UInt32)
             try container.encode(m)
-        case .listing(let l):
+        case .anime(let a):
             try container.encode(2 as UInt32)
+            try container.encode(a)
+        case .listing(let l):
+            try container.encode(3 as UInt32)
             try container.encode(l)
         }
     }
@@ -295,11 +318,150 @@ public enum LinkValue: Codable, Sendable {
 
 public struct MangaWithChapter: Codable, Sendable {
     public var manga: Manga
-    public var chapter: Chapter
+    public var chapter: Manga.Chapter
 
-    public init(manga: Manga, chapter: Chapter) {
+    public init(manga: Manga, chapter: Manga.Chapter) {
         self.manga = manga
         self.chapter = chapter
+    }
+}
+
+public struct AnimeWithEpisode: Codable, Sendable {
+    public var anime: Anime
+    public var episode: Anime.Episode
+
+    public init(anime: Anime, episode: Anime.Episode) {
+        self.anime = anime
+        self.episode = episode
+    }
+}
+
+public struct Anime: Codable, Sendable {
+    public enum Status: Int32, Codable, Sendable {
+        case Unknown = 0
+        case Ongoing = 1
+        case Completed = 2
+        case Cancelled = 3
+        case Hiatus = 4
+    }
+
+    public struct Episode: Codable, Sendable {
+        public var key: String
+        public var title: String?
+        public var episode: Float32?
+        public var dateUpdated: Double?
+        public var url: String?
+        public var lang: String?
+
+        public init(
+            key: String, title: String? = nil, episode: Float32? = nil, dateUpdated: Double? = nil,
+            url: String? = nil, lang: String? = nil
+        ) {
+            self.key = key
+            self.title = title
+            self.episode = episode
+            self.dateUpdated = dateUpdated
+            self.url = url
+            self.lang = lang
+        }
+    }
+
+    public struct AudioTrack: Codable, Sendable {
+        public var url: String
+        public var language: String
+
+        public init(url: String, language: String) {
+            self.url = url
+            self.language = language
+        }
+    }
+
+    public struct Subtitle: Codable, Sendable {
+        public var url: String
+        public var language: String
+        public var format: String
+        public var isHardsub: Bool
+
+        public init(url: String, language: String, format: String, isHardsub: Bool = false) {
+            self.url = url
+            self.language = language
+            self.format = format
+            self.isHardsub = isHardsub
+        }
+    }
+
+    public struct Video: Codable, Sendable {
+        public var url: String
+        public var quality: String
+        public var headers: [String: String]?
+        public var audioTracks: [AudioTrack]?
+        public var subtitles: [Subtitle]?
+
+        public init(
+            url: String, quality: String, headers: [String: String]? = nil,
+            audioTracks: [AudioTrack]? = nil, subtitles: [Subtitle]? = nil
+        ) {
+            self.url = url
+            self.quality = quality
+            self.headers = headers
+            self.audioTracks = audioTracks
+            self.subtitles = subtitles
+        }
+    }
+
+    public struct Season: Codable, Sendable {
+        public var key: String
+        public var title: String
+        public var isCurrent: Bool
+
+        public init(key: String, title: String, isCurrent: Bool = false) {
+            self.key = key
+            self.title = title
+            self.isCurrent = isCurrent
+        }
+    }
+
+    public struct PageResult: Codable, Sendable {
+        public var entries: [Anime]
+        public var hasNextPage: Bool
+
+        public init(entries: [Anime], hasNextPage: Bool) {
+            self.entries = entries
+            self.hasNextPage = hasNextPage
+        }
+    }
+
+    public var key: String
+    public var title: String
+    public var studios: [String]?
+    public var description: String?
+    public var tags: [String]?
+    public var cover: String?
+    public var url: String?
+    public var status: Status
+    public var contentRating: ContentRating
+    public var nsfw: Int32
+    public var episodes: [Episode]?
+    public var seasons: [Season]?
+
+    public init(
+        key: String, title: String, studios: [String]? = nil, description: String? = nil,
+        tags: [String]? = nil, cover: String? = nil, url: String? = nil, status: Status = .Unknown,
+        contentRating: ContentRating = .Safe, nsfw: Int32 = 0, episodes: [Episode]? = nil,
+        seasons: [Season]? = nil
+    ) {
+        self.key = key
+        self.title = title
+        self.studios = studios
+        self.description = description
+        self.tags = tags
+        self.cover = cover
+        self.url = url
+        self.status = status
+        self.contentRating = contentRating
+        self.nsfw = nsfw
+        self.episodes = episodes
+        self.seasons = seasons
     }
 }
 
@@ -322,7 +484,11 @@ public enum HomeComponentValue: Codable, Sendable {
     case scroller([Manga], Listing?)
     case mangaList(Bool, Int32?, [Manga], Listing?)
     case mangaChapterList(Int32?, [MangaWithChapter], Listing?)
+    case animeScroller([Anime], Listing?)
+    case animeList(Bool, Int32?, [Anime], Listing?)
+    case animeEpisodeList(Int32?, [AnimeWithEpisode], Listing?)
     case bigScroller([Manga], Float32?)
+    case animeBigScroller([Anime], Float32?)
     case filters([FilterItem])
     case links([Link])
 
@@ -346,11 +512,30 @@ public enum HomeComponentValue: Codable, Sendable {
                 try container.decode([MangaWithChapter].self),
                 container.decodeNil() ? nil : try container.decode(Listing.self))
         case 3:
+            self = .animeScroller(
+                try container.decode([Anime].self),
+                container.decodeNil() ? nil : try container.decode(Listing.self))
+        case 4:
+            self = .animeList(
+                try container.decode(Bool.self),
+                container.decodeNil() ? nil : try container.decode(Int32.self),
+                try container.decode([Anime].self),
+                container.decodeNil() ? nil : try container.decode(Listing.self))
+        case 5:
+            self = .animeEpisodeList(
+                container.decodeNil() ? nil : try container.decode(Int32.self),
+                try container.decode([AnimeWithEpisode].self),
+                container.decodeNil() ? nil : try container.decode(Listing.self))
+        case 6:
             self = .bigScroller(
                 try container.decode([Manga].self),
                 container.decodeNil() ? nil : try container.decode(Float32.self))
-        case 4: self = .filters(try container.decode([FilterItem].self))
-        case 5: self = .links(try container.decode([Link].self))
+        case 7:
+            self = .animeBigScroller(
+                try container.decode([Anime].self),
+                container.decodeNil() ? nil : try container.decode(Float32.self))
+        case 8: self = .filters(try container.decode([FilterItem].self))
+        case 9: self = .links(try container.decode([Link].self))
         default:
             throw DecodingError.dataCorruptedError(
                 in: container, debugDescription: "Unknown HomeComponentValue variant")
@@ -375,15 +560,34 @@ public enum HomeComponentValue: Codable, Sendable {
             try container.encode(PostcardOption(pageSize))
             try container.encode(entries)
             try container.encode(PostcardOption(listing))
-        case .bigScroller(let entries, let interval):
+        case .animeScroller(let entries, let listing):
             try container.encode(3 as UInt32)
+            try container.encode(entries)
+            try container.encode(PostcardOption(listing))
+        case .animeList(let ranking, let pageSize, let entries, let listing):
+            try container.encode(4 as UInt32)
+            try container.encode(ranking)
+            try container.encode(PostcardOption(pageSize))
+            try container.encode(entries)
+            try container.encode(PostcardOption(listing))
+        case .animeEpisodeList(let pageSize, let entries, let listing):
+            try container.encode(5 as UInt32)
+            try container.encode(PostcardOption(pageSize))
+            try container.encode(entries)
+            try container.encode(PostcardOption(listing))
+        case .bigScroller(let entries, let interval):
+            try container.encode(6 as UInt32)
+            try container.encode(entries)
+            try container.encode(PostcardOption(interval))
+        case .animeBigScroller(let entries, let interval):
+            try container.encode(7 as UInt32)
             try container.encode(entries)
             try container.encode(PostcardOption(interval))
         case .filters(let items):
-            try container.encode(4 as UInt32)
+            try container.encode(8 as UInt32)
             try container.encode(items)
         case .links(let links):
-            try container.encode(5 as UInt32)
+            try container.encode(9 as UInt32)
             try container.encode(links)
         }
     }

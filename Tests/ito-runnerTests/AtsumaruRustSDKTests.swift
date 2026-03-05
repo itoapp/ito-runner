@@ -82,7 +82,7 @@ struct AtsumaruRustSDKTests {
 
         let manga = Manga(
             key: "fX0YJ", title: "", authors: nil, artist: nil, description: nil, tags: nil,
-            cover: nil, url: nil, status: .Unknown, contentRating: .Safe, nsfw: 0, viewer: 0,
+            cover: nil, url: nil, status: .Unknown, contentRating: .Safe, nsfw: 0, viewer: .Default,
             chapters: nil)
 
         let updatedManga = try await runner.getMangaUpdate(
