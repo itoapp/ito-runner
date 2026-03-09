@@ -6,6 +6,22 @@ public struct PluginManifest: Codable, Sendable {
     public init(info: PluginInfo) {
         self.info = info
     }
+    
+    // Custom decoder to handle when the JSON is directly PluginInfo without the "info" wrapper
+    public init(from decoder: Decoder) throws {
+        // Try to decode as if it has an "info" wrapper (old format)
+        if let container = try? decoder.container(keyedBy: CodingKeys.self),
+           let info = try? container.decode(PluginInfo.self, forKey: .info) {
+            self.info = info
+        } else {
+            // Otherwise, decode the root as PluginInfo (new format)
+            self.info = try PluginInfo(from: decoder)
+        }
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case info
+    }
 }
 
 public enum PluginType: String, Codable, Sendable {
@@ -16,7 +32,8 @@ public enum PluginType: String, Codable, Sendable {
 public struct PluginInfo: Codable, Sendable {
     public let id: String
     public let name: String
-    public let version: Int
+    public let version: String
+    public let minAppVersion: String
     public let url: String?
     public let sourceUrl: String?
     public let contentRating: ContentRating?
@@ -24,16 +41,20 @@ public struct PluginInfo: Codable, Sendable {
     public let language: String?
     public let languages: [String]?
     public let type: PluginType  // Manga by default or from JSON
+    public let author: String?
+    public let description: String?
+    public let tags: [String]?
 
     public init(
-        id: String, name: String, version: Int, url: String? = nil,
+        id: String, name: String, version: String, minAppVersion: String, url: String? = nil,
         sourceUrl: String? = nil, contentRating: ContentRating? = nil,
         nsfw: Int? = nil, language: String? = nil, languages: [String]? = nil,
-        type: PluginType = .manga
+        type: PluginType = .manga, author: String? = nil, description: String? = nil, tags: [String]? = nil
     ) {
         self.id = id
         self.name = name
         self.version = version
+        self.minAppVersion = minAppVersion
         self.url = url
         self.sourceUrl = sourceUrl
         self.contentRating = contentRating
@@ -41,17 +62,28 @@ public struct PluginInfo: Codable, Sendable {
         self.language = language
         self.languages = languages
         self.type = type
+        self.author = author
+        self.description = description
+        self.tags = tags
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, version, url, sourceUrl, contentRating, nsfw, language, languages, type
+        case id, name, version, minAppVersion = "min_app_version", url, sourceUrl, contentRating, nsfw, language, languages, type, author, description, tags
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
         self.name = try container.decode(String.self, forKey: .name)
-        self.version = try container.decode(Int.self, forKey: .version)
+
+        // Handle both Int (old format) and String (new SemVer format)
+        if let intVersion = try? container.decode(Int.self, forKey: .version) {
+            self.version = String(intVersion)
+        } else {
+            self.version = try container.decode(String.self, forKey: .version)
+        }
+
+        self.minAppVersion = try container.decodeIfPresent(String.self, forKey: .minAppVersion) ?? "1.0.0"
         self.url = try container.decodeIfPresent(String.self, forKey: .url)
         self.sourceUrl = try container.decodeIfPresent(String.self, forKey: .sourceUrl)
         self.contentRating = try container.decodeIfPresent(
@@ -60,8 +92,10 @@ public struct PluginInfo: Codable, Sendable {
         self.language = try container.decodeIfPresent(String.self, forKey: .language)
         self.languages = try container.decodeIfPresent([String].self, forKey: .languages)
         self.type = try container.decodeIfPresent(PluginType.self, forKey: .type) ?? .manga
-    }
-}
+        self.author = try container.decodeIfPresent(String.self, forKey: .author)
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.tags = try container.decodeIfPresent([String].self, forKey: .tags)
+    }}
 
 public enum ContentRating: Int32, Codable, Sendable {
     case Safe = 0

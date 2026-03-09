@@ -122,6 +122,38 @@ public actor ItoRunner {
         try loadPlugin(fromBytes: wasm)
         return manifest
     }
+    
+    /// Statically extracts the manifest and optional icon from an `.ito` bundle without loading the Wasm module.
+    public static func extractPluginInfo(from url: URL) throws -> (manifest: PluginManifest, icon: Data?) {
+        guard let archive = Archive(url: url, accessMode: .read) else {
+            throw ItoError.wasmTrap("Failed to read .ito archive at \(url)")
+        }
+
+        var manifest: PluginManifest? = nil
+        var iconData: Data? = nil
+
+        for entry in archive {
+            if entry.path.hasSuffix(".json") {
+                var data = Data()
+                _ = try archive.extract(entry) { dict in
+                    data.append(dict)
+                }
+                manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
+            } else if entry.path.lowercased().hasSuffix("icon.png") || entry.path.lowercased().hasSuffix("icon.jpg") {
+                var data = Data()
+                _ = try archive.extract(entry) { dict in
+                    data.append(dict)
+                }
+                iconData = data
+            }
+        }
+
+        guard let finalManifest = manifest else {
+            throw ItoError.wasmTrap("Archive did not contain a manifest file.")
+        }
+
+        return (finalManifest, iconData)
+    }
 
     // MARK: - Memory Utilities
 
