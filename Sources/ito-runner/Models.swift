@@ -27,6 +27,7 @@ public struct PluginManifest: Codable, Sendable {
 public enum PluginType: String, Codable, Sendable {
     case manga
     case anime
+    case novel
 }
 
 public struct PluginInfo: Codable, Sendable {
@@ -194,6 +195,87 @@ public struct Manga: Codable, Sendable {
     }
 }
 
+public struct Novel: Codable, Sendable {
+    public enum Status: Int32, Codable, Sendable {
+        case Unknown = 0
+        case Ongoing = 1
+        case Completed = 2
+        case Cancelled = 3
+        case Hiatus = 4
+    }
+
+    public struct PageResult: Codable, Sendable {
+        public var entries: [Novel]
+        public var hasNextPage: Bool
+
+        public init(entries: [Novel], hasNextPage: Bool) {
+            self.entries = entries
+            self.hasNextPage = hasNextPage
+        }
+    }
+
+    public struct Chapter: Codable, Sendable {
+        public var key: String
+        public var title: String?
+        public var volume: Float32?
+        public var chapter: Float32?
+        public var dateUpdated: Double?
+        public var scanlator: String?
+        public var url: String?
+        public var lang: String?
+        public var paywalled: Bool?
+
+        public init(
+            key: String, title: String? = nil, volume: Float32? = nil, chapter: Float32? = nil,
+            dateUpdated: Double? = nil, scanlator: String? = nil, url: String? = nil,
+            lang: String? = nil, paywalled: Bool? = nil
+        ) {
+            self.key = key
+            self.title = title
+            self.volume = volume
+            self.chapter = chapter
+            self.dateUpdated = dateUpdated
+            self.scanlator = scanlator
+            self.url = url
+            self.lang = lang
+            self.paywalled = paywalled
+        }
+    }
+
+    public var key: String
+    public var title: String
+    public var authors: [String]?
+    public var artist: String?
+    public var description: String?
+    public var tags: [String]?
+    public var cover: String?
+    public var url: String?
+    public var status: Status
+    public var contentRating: ContentRating
+    public var nsfw: Int32
+    public var chapters: [Chapter]?
+
+    public init(
+        key: String, title: String, authors: [String]? = nil, artist: String? = nil,
+        description: String? = nil, tags: [String]? = nil, cover: String? = nil, url: String? = nil,
+        status: Status = .Unknown, contentRating: ContentRating = .Safe, nsfw: Int32 = 0,
+        chapters: [Chapter]? = nil
+    ) {
+        self.key = key
+        self.title = title
+        self.authors = authors
+        self.artist = artist
+        self.description = description
+        self.tags = tags
+        self.cover = cover
+        self.url = url
+        self.status = status
+        self.contentRating = contentRating
+        self.nsfw = nsfw
+        self.chapters = chapters
+    }
+}
+
 public enum PageContent: Codable, Sendable {
     case url(String)
     case text(String)
@@ -332,10 +414,21 @@ public struct Link: Codable, Sendable {
     }
 }
 
+public struct NovelWithChapter: Codable, Sendable {
+    public var novel: Novel
+    public var chapter: Novel.Chapter
+
+    public init(novel: Novel, chapter: Novel.Chapter) {
+        self.novel = novel
+        self.chapter = chapter
+    }
+}
+
 public enum LinkValue: Codable, Sendable {
     case url(String)
     case manga(Manga)
     case anime(Anime)
+    case novel(Novel)
     case listing(Listing)
 
     public init(from decoder: Decoder) throws {
@@ -345,7 +438,8 @@ public enum LinkValue: Codable, Sendable {
         case 0: self = .url(try container.decode(String.self))
         case 1: self = .manga(try container.decode(Manga.self))
         case 2: self = .anime(try container.decode(Anime.self))
-        case 3: self = .listing(try container.decode(Listing.self))
+        case 3: self = .novel(try container.decode(Novel.self))
+        case 4: self = .listing(try container.decode(Listing.self))
         default:
             throw DecodingError.dataCorruptedError(
                 in: container, debugDescription: "Unknown LinkValue variant")
@@ -364,8 +458,11 @@ public enum LinkValue: Codable, Sendable {
         case .anime(let a):
             try container.encode(2 as UInt32)
             try container.encode(a)
-        case .listing(let l):
+        case .novel(let n):
             try container.encode(3 as UInt32)
+            try container.encode(n)
+        case .listing(let l):
+            try container.encode(4 as UInt32)
             try container.encode(l)
         }
     }
@@ -544,6 +641,10 @@ public enum HomeComponentValue: Codable, Sendable {
     case animeEpisodeList(Int32?, [AnimeWithEpisode], Listing?)
     case bigScroller([Manga], Float32?)
     case animeBigScroller([Anime], Float32?)
+    case novelScroller([Novel], Listing?)
+    case novelList(Bool, Int32?, [Novel], Listing?)
+    case novelChapterList(Int32?, [NovelWithChapter], Listing?)
+    case novelBigScroller([Novel], Float32?)
     case filters([FilterItem])
     case links([Link])
 
@@ -589,8 +690,27 @@ public enum HomeComponentValue: Codable, Sendable {
             self = .animeBigScroller(
                 try container.decode([Anime].self),
                 container.decodeNil() ? nil : try container.decode(Float32.self))
-        case 8: self = .filters(try container.decode([FilterItem].self))
-        case 9: self = .links(try container.decode([Link].self))
+        case 8:
+            self = .novelScroller(
+                try container.decode([Novel].self),
+                container.decodeNil() ? nil : try container.decode(Listing.self))
+        case 9:
+            self = .novelList(
+                try container.decode(Bool.self),
+                container.decodeNil() ? nil : try container.decode(Int32.self),
+                try container.decode([Novel].self),
+                container.decodeNil() ? nil : try container.decode(Listing.self))
+        case 10:
+            self = .novelChapterList(
+                container.decodeNil() ? nil : try container.decode(Int32.self),
+                try container.decode([NovelWithChapter].self),
+                container.decodeNil() ? nil : try container.decode(Listing.self))
+        case 11:
+            self = .novelBigScroller(
+                try container.decode([Novel].self),
+                container.decodeNil() ? nil : try container.decode(Float32.self))
+        case 12: self = .filters(try container.decode([FilterItem].self))
+        case 13: self = .links(try container.decode([Link].self))
         default:
             throw DecodingError.dataCorruptedError(
                 in: container, debugDescription: "Unknown HomeComponentValue variant")
@@ -638,11 +758,30 @@ public enum HomeComponentValue: Codable, Sendable {
             try container.encode(7 as UInt32)
             try container.encode(entries)
             try container.encode(PostcardOption(interval))
-        case .filters(let items):
+        case .novelScroller(let entries, let listing):
             try container.encode(8 as UInt32)
+            try container.encode(entries)
+            try container.encode(PostcardOption(listing))
+        case .novelList(let ranking, let pageSize, let entries, let listing):
+            try container.encode(9 as UInt32)
+            try container.encode(ranking)
+            try container.encode(PostcardOption(pageSize))
+            try container.encode(entries)
+            try container.encode(PostcardOption(listing))
+        case .novelChapterList(let pageSize, let entries, let listing):
+            try container.encode(10 as UInt32)
+            try container.encode(PostcardOption(pageSize))
+            try container.encode(entries)
+            try container.encode(PostcardOption(listing))
+        case .novelBigScroller(let entries, let interval):
+            try container.encode(11 as UInt32)
+            try container.encode(entries)
+            try container.encode(PostcardOption(interval))
+        case .filters(let items):
+            try container.encode(12 as UInt32)
             try container.encode(items)
         case .links(let links):
-            try container.encode(9 as UInt32)
+            try container.encode(13 as UInt32)
             try container.encode(links)
         }
     }

@@ -1,6 +1,20 @@
 import Testing
 @testable import ito_runner
+import Foundation
 
-@Test func example() async throws {
-    // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+@Test func versionComparison() async throws {
+    let installedVersion = "1.0.0"
+    let repoVersion = "1.0.1"
+    
+    let isAscending = installedVersion.compare(repoVersion, options: .numeric) == .orderedAscending
+    #expect(isAscending == true)
 }
+
+@Test func versionComparisonFloat() async throws {
+    let installedVersion = "1.0"
+    let repoVersion = "1.0.1"
+    
+    let isAscending = installedVersion.compare(repoVersion, options: .numeric) == .orderedAscending
+    #expect(isAscending == true)
+}
+

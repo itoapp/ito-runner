@@ -28,7 +28,7 @@ struct PluginManifestTests {
 
         #expect(manifest.info.id == "en.atsumaru")
         #expect(manifest.info.name == "Atsumaru")
-        #expect(manifest.info.version == 1)
+        #expect(manifest.info.version == "1")
         #expect(manifest.info.url == "https://atsu.moe/")
         #expect(manifest.info.contentRating == .Safe)
         #expect(manifest.info.languages == ["en"])
