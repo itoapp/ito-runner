@@ -951,8 +951,7 @@ struct MegacloudExtractor {
         let req2 = try? NSRegularExpression(
             pattern: "\\b([a-zA-Z0-9]{16})\\b.*?\\b([a-zA-Z0-9]{16})\\b.*?\\b([a-zA-Z0-9]{16})\\b")
         if let match = req2?.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-            match.numberOfRanges == 4
-        {
+            match.numberOfRanges == 4 {
             return String(html[Range(match.range(at: 1), in: html)!])
                 + String(html[Range(match.range(at: 2), in: html)!])
                 + String(html[Range(match.range(at: 3), in: html)!])

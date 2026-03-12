@@ -14,7 +14,7 @@ public class WasmBridge {
     public var stdModule: StdModule?
     public var defaultsModule: DefaultsModule?
 
-    private var pendingNetResponseBytes: [UInt8]? = nil
+    private var pendingNetResponseBytes: [UInt8]?
 
     public init(runner: ItoRunner) {
         self.runner = runner
@@ -22,8 +22,7 @@ public class WasmBridge {
 
     /// Reads and decodes a Postcard struct from Wasm memory
     public func readRequest<T: Decodable>(_ type: T.Type, requestPtr: Int32, requestLen: Int32)
-        async throws -> T
-    {
+        async throws -> T {
         let bytes = try await runner.readMemory(offset: Int(requestPtr), length: Int(requestLen))
         return try runner.postcardDecoder.decode(type, from: bytes)
     }
@@ -303,7 +302,7 @@ public class WasmBridge {
         }
 
         let htmlFree = Function(store: store, parameters: [.i32], results: []) {
-            [weak self] caller, args in
+            [weak self] _, args in
             guard let self = self else { return [] }
             let elementId = args[0].i32
 
@@ -384,8 +383,7 @@ public class WasmBridge {
             return []
         }
 
-        let defaultsSet = Function(store: store, parameters: [.i32, .i32, .i32, .i32], results: [])
-        {
+        let defaultsSet = Function(store: store, parameters: [.i32, .i32, .i32, .i32], results: []) {
             [weak self] caller, args in
             guard let self = self else { return [] }
             let keyPtr = args[0].i32
@@ -497,22 +495,22 @@ public class WasmBridge {
         let imports: Imports = [
             "ito:core/net": [
                 "fetch": netFetch,
-                "fetch_read": netFetchRead,
+                "fetch_read": netFetchRead
             ],
             "ito:core/html": [
                 "parse": htmlParse,
                 "select": htmlSelect,
                 "text": htmlText,
                 "attr": htmlAttr,
-                "free": htmlFree,
+                "free": htmlFree
             ],
             "ito:core/js": ["evaluate": jsEvaluate],
             "ito:core/std": ["print": stdprint],
             "ito:core/defaults": [
                 "set": defaultsSet,
                 "get": defaultsGet,
-                "remove": defaultsRemove,
-            ],
+                "remove": defaultsRemove
+            ]
         ]
 
         return imports

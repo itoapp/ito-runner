@@ -31,7 +31,7 @@ struct PostcardDetailedTests {
             IntContainer(
                 i8: .max, i16: .max, i32: .max, i64: .max, u8: .max, u16: .max, u32: .max, u64: .max
             ),
-            IntContainer(i8: .min, i16: .min, i32: .min, i64: .min, u8: 0, u16: 0, u32: 0, u64: 0),
+            IntContainer(i8: .min, i16: .min, i32: .min, i64: .min, u8: 0, u16: 0, u32: 0, u64: 0)
         ]
 
         for val in values {
@@ -79,7 +79,7 @@ struct PostcardDetailedTests {
             FloatContainer(f: 0.0, d: 0.0),
             FloatContainer(f: 1.5, d: 1.5),
             FloatContainer(f: -1.5, d: -1.5),
-            FloatContainer(f: 3.14159, d: 3.14159265359),
+            FloatContainer(f: 3.14159, d: 3.14159265359)
         ]
 
         for val in values {
@@ -103,7 +103,7 @@ struct PostcardDetailedTests {
             "hello",
             "Hello World",
             "🚀🔥Code",
-            "Multi\nLine",
+            "Multi\nLine"
         ]
 
         for s in values {
@@ -193,7 +193,7 @@ struct PostcardDetailedTests {
             name: "Root",
             children: [
                 Child(id: 1, tags: ["a", "b"]),
-                Child(id: 2, tags: []),
+                Child(id: 2, tags: [])
             ],
             metadata: ["key1": "value1", "key2": "value2"]
         )

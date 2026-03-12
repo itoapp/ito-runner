@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "ito-runner",
     platforms: [
-        .macOS(.v14), .iOS(.v15),
+        .macOS(.v14), .iOS(.v15)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
@@ -19,7 +19,7 @@ let package = Package(
         .package(url: "https://github.com/swiftwasm/WasmKit", "0.2.0"..<"0.3.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
         .package(
-            url: "https://github.com/weichsel/ZIPFoundation.git", .upToNextMajor(from: "0.9.0")),
+            url: "https://github.com/weichsel/ZIPFoundation.git", .upToNextMajor(from: "0.9.0"))
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -29,15 +29,15 @@ let package = Package(
             dependencies: [
                 .product(name: "WasmKit", package: "WasmKit"),
                 .product(name: "SwiftSoup", package: "SwiftSoup"),
-                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
+                .product(name: "ZIPFoundation", package: "ZIPFoundation")
             ]
         ),
         .testTarget(
             name: "ito-runnerTests",
             dependencies: [
                 "ito-runner",
-                .product(name: "WAT", package: "WasmKit"),
+                .product(name: "WAT", package: "WasmKit")
             ]
-        ),
+        )
     ]
 )

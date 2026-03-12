@@ -322,8 +322,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
         }
     }
     mutating func nestedContainer<NestedKey>(keyedBy keyType: NestedKey.Type, forKey key: Key)
-        -> KeyedEncodingContainer<NestedKey> where NestedKey: CodingKey
-    {
+        -> KeyedEncodingContainer<NestedKey> where NestedKey: CodingKey {
         encoder.codingPath.append(key)
         return encoder.container(keyedBy: keyType)
     }
@@ -613,8 +612,7 @@ private struct _PostcardUnkeyedEncodingContainer: UnkeyedEncodingContainer {
         count += 1
     }
     mutating func nestedContainer<NestedKey>(keyedBy keyType: NestedKey.Type)
-        -> KeyedEncodingContainer<NestedKey> where NestedKey: CodingKey
-    {
+        -> KeyedEncodingContainer<NestedKey> where NestedKey: CodingKey {
         let key = AnyCodingKey(intValue: count)!
         encoder.codingPath.append(key)
         count += 1

@@ -30,7 +30,7 @@ public final class DefaultJsModule: JsModule, @unchecked Sendable {
             console?.setObject(consoleLog, forKeyedSubscript: "log" as NSString)
         }
 
-        context.exceptionHandler = { context, exception in
+        context.exceptionHandler = { _, exception in
             if let exc = exception {
                 print("[JS Exception] \(exc.toString() ?? "Unknown exception")")
             }

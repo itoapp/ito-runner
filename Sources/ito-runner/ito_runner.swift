@@ -96,8 +96,8 @@ public actor ItoRunner {
             throw ItoError.wasmTrap("Failed to read .ito archive at \(url)")
         }
 
-        var manifest: PluginManifest? = nil
-        var wasmBytes: [UInt8]? = nil
+        var manifest: PluginManifest?
+        var wasmBytes: [UInt8]?
 
         for entry in archive {
             if entry.path.hasSuffix(".json") {
@@ -122,15 +122,15 @@ public actor ItoRunner {
         try loadPlugin(fromBytes: wasm)
         return manifest
     }
-    
+
     /// Statically extracts the manifest and optional icon from an `.ito` bundle without loading the Wasm module.
     public static func extractPluginInfo(from url: URL) throws -> (manifest: PluginManifest, icon: Data?) {
         guard let archive = Archive(url: url, accessMode: .read) else {
             throw ItoError.wasmTrap("Failed to read .ito archive at \(url)")
         }
 
-        var manifest: PluginManifest? = nil
-        var iconData: Data? = nil
+        var manifest: PluginManifest?
+        var iconData: Data?
 
         for entry in archive {
             if entry.path.hasSuffix(".json") {
@@ -280,8 +280,7 @@ public actor ItoRunner {
 
     /// Executes `get_search_manga_list(query: String, page: Int32, filters: [FilterStruct])`
     public func getSearchMangaList(query: String, page: Int32, filters: [FilterItem]?) async throws
-        -> Manga.PageResult
-    {
+        -> Manga.PageResult {
         let qInfo = try allocString(query)
         defer { deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
 
@@ -294,7 +293,7 @@ public actor ItoRunner {
             args: [
                 .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
                 .i32(UInt32(bitPattern: page)),
-                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len)),
+                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -323,7 +322,7 @@ public actor ItoRunner {
             "get_manga_list",
             args: [
                 .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
-                .i32(UInt32(bitPattern: page)),
+                .i32(UInt32(bitPattern: page))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -344,8 +343,7 @@ public actor ItoRunner {
 
     /// Executes `get_manga_update(manga: Manga, needs_details: Bool, needs_chapters: Bool)`
     public func getMangaUpdate(manga: Manga, needsDetails: Bool = true, needsChapters: Bool = true)
-        async throws -> Manga
-    {
+        async throws -> Manga {
         let mBytes = try self.postcardEncoder.encode(manga)
         let hexString = mBytes.map { String(format: "%02x", $0) }.joined()
         print("[DEBUG] getMangaUpdate Swift Manga Payload (len \(mBytes.count)): \(hexString)")
@@ -357,7 +355,7 @@ public actor ItoRunner {
             "get_manga_update",
             args: [
                 .i32(UInt32(bitPattern: mInfo.ptr)), .i32(UInt32(bitPattern: mInfo.len)),
-                .i32(needsDetails ? 1 : 0), .i32(needsChapters ? 1 : 0),
+                .i32(needsDetails ? 1 : 0), .i32(needsChapters ? 1 : 0)
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -390,7 +388,7 @@ public actor ItoRunner {
             "get_page_list",
             args: [
                 .i32(UInt32(bitPattern: mInfo.ptr)), .i32(UInt32(bitPattern: mInfo.len)),
-                .i32(UInt32(bitPattern: cInfo.ptr)), .i32(UInt32(bitPattern: cInfo.len)),
+                .i32(UInt32(bitPattern: cInfo.ptr)), .i32(UInt32(bitPattern: cInfo.len))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -413,8 +411,7 @@ public actor ItoRunner {
 
     /// Executes `get_search_anime_list(query: String, page: Int32, filters: [FilterStruct])`
     public func getSearchAnimeList(query: String, page: Int32, filters: [FilterItem]?) async throws
-        -> Anime.PageResult
-    {
+        -> Anime.PageResult {
         let qInfo = try allocString(query)
         defer { deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
 
@@ -427,7 +424,7 @@ public actor ItoRunner {
             args: [
                 .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
                 .i32(UInt32(bitPattern: page)),
-                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len)),
+                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -456,7 +453,7 @@ public actor ItoRunner {
             "get_anime_list",
             args: [
                 .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
-                .i32(UInt32(bitPattern: page)),
+                .i32(UInt32(bitPattern: page))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -477,8 +474,7 @@ public actor ItoRunner {
 
     /// Executes `get_anime_update(anime: Anime, needs_details: Bool, needs_episodes: Bool)`
     public func getAnimeUpdate(anime: Anime, needsDetails: Bool = true, needsEpisodes: Bool = true)
-        async throws -> Anime
-    {
+        async throws -> Anime {
         let aBytes = try self.postcardEncoder.encode(anime)
         let hexString = aBytes.map { String(format: "%02x", $0) }.joined()
         print("[DEBUG] getAnimeUpdate Swift Anime Payload (len \(aBytes.count)): \(hexString)")
@@ -490,7 +486,7 @@ public actor ItoRunner {
             "get_anime_update",
             args: [
                 .i32(UInt32(bitPattern: aInfo.ptr)), .i32(UInt32(bitPattern: aInfo.len)),
-                .i32(needsDetails ? 1 : 0), .i32(needsEpisodes ? 1 : 0),
+                .i32(needsDetails ? 1 : 0), .i32(needsEpisodes ? 1 : 0)
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -523,7 +519,7 @@ public actor ItoRunner {
             "get_video_list",
             args: [
                 .i32(UInt32(bitPattern: aInfo.ptr)), .i32(UInt32(bitPattern: aInfo.len)),
-                .i32(UInt32(bitPattern: eInfo.ptr)), .i32(UInt32(bitPattern: eInfo.len)),
+                .i32(UInt32(bitPattern: eInfo.ptr)), .i32(UInt32(bitPattern: eInfo.len))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -546,8 +542,7 @@ public actor ItoRunner {
 
     /// Executes `get_search_novel_list(query: String, page: Int32, filters: [FilterStruct])`
     public func getSearchNovelList(query: String, page: Int32, filters: [FilterItem]?) async throws
-        -> Novel.PageResult
-    {
+        -> Novel.PageResult {
         let qInfo = try allocString(query)
         defer { deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
 
@@ -560,7 +555,7 @@ public actor ItoRunner {
             args: [
                 .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
                 .i32(UInt32(bitPattern: page)),
-                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len)),
+                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -589,7 +584,7 @@ public actor ItoRunner {
             "get_novel_list",
             args: [
                 .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
-                .i32(UInt32(bitPattern: page)),
+                .i32(UInt32(bitPattern: page))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -610,8 +605,7 @@ public actor ItoRunner {
 
     /// Executes `get_novel_update(novel: Novel, needs_details: Bool, needs_chapters: Bool)`
     public func getNovelUpdate(novel: Novel, needsDetails: Bool = true, needsChapters: Bool = true)
-        async throws -> Novel
-    {
+        async throws -> Novel {
         let nBytes = try self.postcardEncoder.encode(novel)
         let hexString = nBytes.map { String(format: "%02x", $0) }.joined()
         print("[DEBUG] getNovelUpdate Swift Novel Payload (len \(nBytes.count)): \(hexString)")
@@ -623,7 +617,7 @@ public actor ItoRunner {
             "get_novel_update",
             args: [
                 .i32(UInt32(bitPattern: nInfo.ptr)), .i32(UInt32(bitPattern: nInfo.len)),
-                .i32(needsDetails ? 1 : 0), .i32(needsChapters ? 1 : 0),
+                .i32(needsDetails ? 1 : 0), .i32(needsChapters ? 1 : 0)
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
@@ -656,7 +650,7 @@ public actor ItoRunner {
             "get_chapter_content",
             args: [
                 .i32(UInt32(bitPattern: nInfo.ptr)), .i32(UInt32(bitPattern: nInfo.len)),
-                .i32(UInt32(bitPattern: cInfo.ptr)), .i32(UInt32(bitPattern: cInfo.len)),
+                .i32(UInt32(bitPattern: cInfo.ptr)), .i32(UInt32(bitPattern: cInfo.len))
             ])
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {

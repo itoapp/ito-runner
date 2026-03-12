@@ -6,8 +6,7 @@ import Foundation
 /// This wrapper forces the use of `UnkeyedDecodingContainer` and handles the Postcard Map structure explicitly.
 @propertyWrapper
 public struct PostcardMapCoded<Key: Hashable & Codable, Value: Codable>: Codable,
-    PostcardMapDecodable
-{
+    PostcardMapDecodable {
     public var wrappedValue: [Key: Value]
 
     public init(wrappedValue: [Key: Value]) {
@@ -60,8 +59,7 @@ extension PostcardMapCoded: @unchecked Sendable where Key: Sendable, Value: Send
 
 @propertyWrapper
 public struct PostcardOptionalMapCoded<Key: Hashable & Codable, Value: Codable>: Codable,
-    PostcardMapDecodable
-{
+    PostcardMapDecodable {
     public var wrappedValue: [Key: Value]?
 
     public init(wrappedValue: [Key: Value]?) {
@@ -94,7 +92,7 @@ public struct PostcardOptionalMapCoded<Key: Hashable & Codable, Value: Codable>:
         var singleContainer = encoder.singleValueContainer()
         if let dict = wrappedValue {
             try singleContainer.encode(true) // 1 for Option::Some
-            
+
             var container = encoder.unkeyedContainer()
             try container.encode(UInt64(dict.count))
             for (key, value) in dict {

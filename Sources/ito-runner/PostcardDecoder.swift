@@ -270,8 +270,7 @@ private struct _PostcardKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingCon
         return try UInt64(from: decoder)
     }
     func nestedContainer<NestedKey>(keyedBy type: NestedKey.Type, forKey key: Key) throws
-        -> KeyedDecodingContainer<NestedKey> where NestedKey: CodingKey
-    {
+        -> KeyedDecodingContainer<NestedKey> where NestedKey: CodingKey {
         decoder.codingPath.append(key)
         return try decoder.container(keyedBy: type)
     }
@@ -451,8 +450,7 @@ private struct _PostcardUnkeyedDecodingContainer: UnkeyedDecodingContainer {
         return try UInt64(from: decoder)
     }
     mutating func nestedContainer<NestedKey>(keyedBy type: NestedKey.Type) throws
-        -> KeyedDecodingContainer<NestedKey> where NestedKey: CodingKey
-    {
+        -> KeyedDecodingContainer<NestedKey> where NestedKey: CodingKey {
         guard !isAtEnd else { throw ItoError.postcardDecodingError("Unkeyed container is at end.") }
         let key = AnyCodingKey(intValue: currentIndex)!
         decoder.codingPath.append(key)

@@ -34,28 +34,28 @@ struct HostModuleNetTests {
                 (import "ito:core/net" "fetch" (func $fetch (param i32 i32) (result i32)))
                 (import "ito:core/net" "fetch_read" (func $fetch_read (param i32)))
                 (memory (export "memory") 1)
-                
+
                 (func $alloc (export "alloc") (param i32) (result i32)
                     ;; Just return a fixed offset like 1024 for testing allocation
                     i32.const 1024
                 )
-                
+
                 (func (export "trigger_fetch") (param $ptr i32) (param $len i32) (result i64)
                     (local $response_len i32)
                     (local $response_ptr i32)
-                    
+
                     local.get $ptr
                     local.get $len
                     call $fetch
                     local.set $response_len
-                    
+
                     local.get $response_len
                     call $alloc
                     local.set $response_ptr
-                    
+
                     local.get $response_ptr
                     call $fetch_read
-                    
+
                     local.get $response_ptr
                     i64.extend_i32_u
                     i64.const 32

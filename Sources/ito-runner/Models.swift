@@ -6,7 +6,7 @@ public struct PluginManifest: Codable, Sendable {
     public init(info: PluginInfo) {
         self.info = info
     }
-    
+
     // Custom decoder to handle when the JSON is directly PluginInfo without the "info" wrapper
     public init(from decoder: Decoder) throws {
         // Try to decode as if it has an "info" wrapper (old format)
@@ -18,7 +18,7 @@ public struct PluginManifest: Codable, Sendable {
             self.info = try PluginInfo(from: decoder)
         }
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case info
     }

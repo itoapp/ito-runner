@@ -54,10 +54,10 @@ struct HostModuleHtmlTests {
             (module
                 (import "ito:core/html" "parse" (func $html_parse (param i32 i32) (result i32)))
                 (memory (export "memory") 1)
-                
+
                 ;; Data string at offset 16: "<html><body>Hello</body></html>" -> 31 bytes
                 (data (i32.const 16) "<html><body>Hello</body></html>")
-                
+
                 ;; Dummy alloc function, unused in parse since it returns i32
                 (func (export "alloc") (param i32) (result i32)
                     (i32.const 1024)
@@ -97,10 +97,10 @@ struct HostModuleHtmlTests {
             (module
                 (import "ito:core/html" "select" (func $html_select (param i32 i32 i32) (result i64)))
                 (memory (export "memory") 1)
-                
+
                 ;; Data string at offset 16: "body" -> 4 bytes
                 (data (i32.const 16) "body")
-                
+
                 (func (export "alloc") (param i32) (result i32)
                     (i32.const 1024)
                 )

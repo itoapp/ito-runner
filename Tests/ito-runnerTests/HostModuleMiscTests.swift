@@ -43,10 +43,10 @@ struct HostModuleMiscTests {
             (module
                 (import "ito:core/js" "evaluate" (func $js_eval (param i32 i32) (result i64)))
                 (memory (export "memory") 1)
-                
+
                 ;; Data string at offset 16: "return 1 + 1;" -> 13 bytes
                 (data (i32.const 16) "return 1 + 1;")
-                
+
                 (func (export "alloc") (param i32) (result i32)
                     (i32.const 1024)
                 )
@@ -89,10 +89,10 @@ struct HostModuleMiscTests {
             (module
                 (import "ito:core/defaults" "get" (func $def_get (param i32 i32) (result i64)))
                 (memory (export "memory") 1)
-                
+
                 ;; Data string at offset 16: "test_key" -> 8 bytes
                 (data (i32.const 16) "test_key")
-                
+
                 (func (export "alloc") (param i32) (result i32)
                     (i32.const 1024)
                 )
