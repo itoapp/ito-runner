@@ -4,6 +4,23 @@ import Foundation
 
 public protocol NetModule: Sendable {
     func fetch(request: NetRequest) async throws -> NetResponse
+    func fetch(request: NetRequest, options: NetOptions) async throws -> NetResponse
+}
+
+public extension NetModule {
+    func fetch(request: NetRequest, options: NetOptions) async throws -> NetResponse {
+        return try await fetch(request: request)
+    }
+}
+
+public struct NetOptions: Codable, Sendable {
+    public let rateLimit: Int32
+    public let persistCookies: Bool
+
+    public init(rateLimit: Int32 = 0, persistCookies: Bool = false) {
+        self.rateLimit = rateLimit
+        self.persistCookies = persistCookies
+    }
 }
 
 public struct NetRequest: Codable, Sendable {
@@ -38,6 +55,9 @@ public protocol HtmlModule: Sendable {
     func parse(html: String) throws -> UInt32
     func select(elementId: UInt32, selector: String) throws -> [UInt32]
     func text(elementId: UInt32) throws -> String
+    func ownText(elementId: UInt32) throws -> String
+    func html(elementId: UInt32) throws -> String
+    func outerHtml(elementId: UInt32) throws -> String
     func attr(elementId: UInt32, name: String) throws -> String?
     func free(elementId: UInt32)
     func clear()
@@ -62,3 +82,17 @@ public protocol DefaultsModule: Sendable {
     func get(key: String) -> String?
     func remove(key: String)
 }
+
+// MARK: - Env Module
+
+public protocol EnvModule: Sendable {
+    func getLanguages() -> [String]
+}
+
+// MARK: - Ui Module
+
+public protocol UiModule: Sendable {
+    func pushHomeComponent(_ component: HomeComponent)
+}
+
+

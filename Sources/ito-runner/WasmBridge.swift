@@ -13,6 +13,8 @@ public class WasmBridge {
     public var jsModule: JsModule?
     public var stdModule: StdModule?
     public var defaultsModule: DefaultsModule?
+    public var envModule: EnvModule?
+    public var uiModule: UiModule?
 
     private var pendingNetResponseBytes: [UInt8]?
 
@@ -100,6 +102,76 @@ public class WasmBridge {
                 let response: NetResponse
                 if let error = box.error {
                     let errMsg = "FFI Error in net_fetch: \(error.localizedDescription)"
+                    response = NetResponse(
+                        status: 500,
+                        headers: ["Content-Type": "text/plain"],
+                        body: Array(errMsg.utf8)
+                    )
+                } else {
+                    response = box.response!
+                }
+                let responseBytes = try self.runner.postcardEncoder.encode(response)
+                self.pendingNetResponseBytes = responseBytes
+                return [.i32(UInt32(responseBytes.count))]
+            } catch {
+                throw ItoError.wasmTrap("Failed to decode NetRequest or serialize NetResponse: \(error)")
+            }
+        }
+
+        let netFetchV2 = Function(store: store, parameters: [.i32, .i32, .i32, .i32], results: [.i32]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let requestPtr = args[0].i32
+            let requestLen = args[1].i32
+            let optPtr = args[2].i32
+            let optLen = args[3].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                throw ItoError.wasmTrap("Plugin must export linear memory")
+            }
+
+            let requestBytes = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(requestPtr), count: Int(requestLen)
+            ) { buffer in Array(buffer) }
+
+            let optBytes = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(optPtr), count: Int(optLen)
+            ) { buffer in Array(buffer) }
+
+            do {
+                let request = try self.runner.postcardDecoder.decode(
+                    NetRequest.self, from: requestBytes)
+                    
+                let options = try self.runner.postcardDecoder.decode(
+                    NetOptions.self, from: optBytes)
+
+                class ResultBox: @unchecked Sendable {
+                    var response: NetResponse?
+                    var error: Error?
+                }
+
+                let box = ResultBox()
+                let module = self.netModule
+                let sem = DispatchSemaphore(value: 0)
+
+                Task {
+                    do {
+                        if let module = module {
+                            box.response = try await module.fetch(request: request, options: options)
+                        } else {
+                            throw ItoError.hostModuleError(
+                                domain: "net", message: "NetModule not provided")
+                        }
+                    } catch {
+                        box.error = error
+                    }
+                    sem.signal()
+                }
+                sem.wait()
+
+                let response: NetResponse
+                if let error = box.error {
+                    let errMsg = "FFI Error in net_fetch_v2: \(error.localizedDescription)"
                     response = NetResponse(
                         status: 500,
                         headers: ["Content-Type": "text/plain"],
@@ -315,6 +387,66 @@ public class WasmBridge {
             return []
         }
 
+        let htmlOwnText = Function(store: store, parameters: [.i32], results: [.i64]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let elementId = args[0].i32
+
+            guard let alloc = caller.instance?.exports[function: "alloc"] else { throw ItoError.wasmTrap("Plugin must export alloc") }
+            guard let module = self.htmlModule else { throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided") }
+
+            let text = try module.ownText(elementId: elementId)
+            let responseBytes = try self.runner.postcardEncoder.encode(text)
+            let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
+            let responsePtr = allocResult[0].i32
+
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else { throw ItoError.wasmTrap("Memory lost after alloc") }
+            refetchedMemory.withUnsafeMutableBufferPointer(offset: UInt(responsePtr), count: responseBytes.count) { buffer in
+                responseBytes.withUnsafeBytes { src in buffer.copyMemory(from: UnsafeRawBufferPointer(src)) }
+            }
+            return [.i64((UInt64(responsePtr) << 32) | UInt64(UInt32(responseBytes.count)))]
+        }
+
+        let htmlHtmlContent = Function(store: store, parameters: [.i32], results: [.i64]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let elementId = args[0].i32
+
+            guard let alloc = caller.instance?.exports[function: "alloc"] else { throw ItoError.wasmTrap("Plugin must export alloc") }
+            guard let module = self.htmlModule else { throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided") }
+
+            let text = try module.html(elementId: elementId)
+            let responseBytes = try self.runner.postcardEncoder.encode(text)
+            let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
+            let responsePtr = allocResult[0].i32
+
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else { throw ItoError.wasmTrap("Memory lost after alloc") }
+            refetchedMemory.withUnsafeMutableBufferPointer(offset: UInt(responsePtr), count: responseBytes.count) { buffer in
+                responseBytes.withUnsafeBytes { src in buffer.copyMemory(from: UnsafeRawBufferPointer(src)) }
+            }
+            return [.i64((UInt64(responsePtr) << 32) | UInt64(UInt32(responseBytes.count)))]
+        }
+
+        let htmlOuterHtml = Function(store: store, parameters: [.i32], results: [.i64]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let elementId = args[0].i32
+
+            guard let alloc = caller.instance?.exports[function: "alloc"] else { throw ItoError.wasmTrap("Plugin must export alloc") }
+            guard let module = self.htmlModule else { throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided") }
+
+            let text = try module.outerHtml(elementId: elementId)
+            let responseBytes = try self.runner.postcardEncoder.encode(text)
+            let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
+            let responsePtr = allocResult[0].i32
+
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else { throw ItoError.wasmTrap("Memory lost after alloc") }
+            refetchedMemory.withUnsafeMutableBufferPointer(offset: UInt(responsePtr), count: responseBytes.count) { buffer in
+                responseBytes.withUnsafeBytes { src in buffer.copyMemory(from: UnsafeRawBufferPointer(src)) }
+            }
+            return [.i64((UInt64(responsePtr) << 32) | UInt64(UInt32(responseBytes.count)))]
+        }
+
         let jsEvaluate = Function(store: store, parameters: [.i32, .i32], results: [.i64]) {
             [weak self] caller, args in
             guard let self = self else { return [] }
@@ -492,9 +624,64 @@ public class WasmBridge {
             return []
         }
 
+        let envGetLanguages = Function(store: store, parameters: [], results: [.i64]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+
+            guard let alloc = caller.instance?.exports[function: "alloc"]
+            else {
+                throw ItoError.wasmTrap("Plugin must export alloc")
+            }
+
+            let langs = self.envModule?.getLanguages() ?? ["en"]
+            let responseBytes = try self.runner.postcardEncoder.encode(langs)
+
+            let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
+            let responsePtr = allocResult[0].i32
+
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
+                throw ItoError.wasmTrap("Memory lost after alloc")
+            }
+
+            refetchedMemory.withUnsafeMutableBufferPointer(
+                offset: UInt(responsePtr), count: responseBytes.count
+            ) { buffer in
+                responseBytes.withUnsafeBytes { src in
+                    buffer.copyMemory(from: UnsafeRawBufferPointer(src))
+                }
+            }
+
+            let packed = (UInt64(responsePtr) << 32) | UInt64(UInt32(responseBytes.count))
+            return [.i64(packed)]
+        }
+
+        let uiPushHomeComponent = Function(store: store, parameters: [.i32, .i32], results: []) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let ptr = args[0].i32
+            let len = args[1].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                throw ItoError.wasmTrap("Plugin must export memory")
+            }
+
+            let compBytes = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(ptr), count: Int(len)
+            ) { buffer in
+                Array(buffer)
+            }
+
+            // Decode and push
+            if let comp = try? self.runner.postcardDecoder.decode(HomeComponent.self, from: compBytes) {
+                self.uiModule?.pushHomeComponent(comp)
+            }
+            return []
+        }
+
         let imports: Imports = [
             "ito:core/net": [
                 "fetch": netFetch,
+                "fetch_v2": netFetchV2,
                 "fetch_read": netFetchRead
             ],
             "ito:core/html": [
@@ -502,7 +689,10 @@ public class WasmBridge {
                 "select": htmlSelect,
                 "text": htmlText,
                 "attr": htmlAttr,
-                "free": htmlFree
+                "free": htmlFree,
+                "own_text": htmlOwnText,
+                "html_content": htmlHtmlContent,
+                "outer_html": htmlOuterHtml
             ],
             "ito:core/js": ["evaluate": jsEvaluate],
             "ito:core/std": ["print": stdprint],
@@ -510,6 +700,12 @@ public class WasmBridge {
                 "set": defaultsSet,
                 "get": defaultsGet,
                 "remove": defaultsRemove
+            ],
+            "ito:core/env": [
+                "get_languages": envGetLanguages
+            ],
+            "ito:core/ui": [
+                "push_home_component": uiPushHomeComponent
             ]
         ]
 

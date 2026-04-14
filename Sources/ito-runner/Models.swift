@@ -30,6 +30,23 @@ public enum PluginType: String, Codable, Sendable, PostcardEnumMarker {
     case novel
 }
 
+public struct SettingsSchema: Codable, Sendable {
+    public var settings: [Setting]
+}
+
+public enum Setting: Codable, Sendable, PostcardEnumMarker {
+    case toggle(id: String, name: String, summary: String?, defaultValue: Bool)
+    case text(id: String, name: String, summary: String?, defaultValue: String)
+    case picker(id: String, name: String, summary: String?, options: [String], defaultValue: String)
+
+    enum CodingKeys: Int, CodingKey, PostcardEnumKeys {
+        case toggle = 0
+        case text = 1
+        case picker = 2
+    }
+}
+
+
 public struct PluginInfo: Codable, Sendable {
     public let id: String
     public let name: String
@@ -423,10 +440,11 @@ public struct Anime: Codable, Sendable, Identifiable {
         public var dateUpdated: Double?
         public var url: String?
         public var lang: String?
+        public var paywalled: Bool?
 
         public init(
             key: String, title: String? = nil, episode: Float32? = nil, dateUpdated: Double? = nil,
-            url: String? = nil, lang: String? = nil
+            url: String? = nil, lang: String? = nil, paywalled: Bool? = nil
         ) {
             self.key = key
             self.title = title
@@ -434,6 +452,7 @@ public struct Anime: Codable, Sendable, Identifiable {
             self.dateUpdated = dateUpdated
             self.url = url
             self.lang = lang
+            self.paywalled = paywalled
         }
     }
 

@@ -28,6 +28,18 @@ final class MockHtmlModule: HtmlModule, Sendable {
         return ""
     }
 
+    func ownText(elementId: UInt32) throws -> String {
+        return ""
+    }
+
+    func html(elementId: UInt32) throws -> String {
+        return ""
+    }
+
+    func outerHtml(elementId: UInt32) throws -> String {
+        return ""
+    }
+
     func attr(elementId: UInt32, name: String) throws -> String? {
         if elementId == 44 && name == "class" {
             return "greeting"

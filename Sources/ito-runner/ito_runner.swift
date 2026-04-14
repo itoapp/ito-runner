@@ -27,6 +27,8 @@ public actor ItoRunner {
     public var jsModule: JsModule?
     public var stdModule: StdModule?
     public var defaultsModule: DefaultsModule?
+    public var envModule: EnvModule?
+    public var uiModule: UiModule?
 
     /// Initializes a new runner instance.
     public init() {
@@ -38,6 +40,8 @@ public actor ItoRunner {
     public func setJsModule(_ module: JsModule) { self.jsModule = module }
     public func setStdModule(_ module: StdModule) { self.stdModule = module }
     public func setDefaultsModule(_ module: DefaultsModule) { self.defaultsModule = module }
+    public func setEnvModule(_ module: EnvModule) { self.envModule = module }
+    public func setUiModule(_ module: UiModule) { self.uiModule = module }
 
     /// Loads a `.wasm` file, sets up the host environment (FFI), and instantiates the plugin.
     ///
@@ -65,6 +69,8 @@ public actor ItoRunner {
             bridge.jsModule = self.jsModule
             bridge.stdModule = self.stdModule
             bridge.defaultsModule = self.defaultsModule
+            bridge.envModule = self.envModule
+            bridge.uiModule = self.uiModule
             let imports = bridge.buildImports(store: store)
 
             // Clear any lingering state from previous runs
@@ -250,6 +256,66 @@ public actor ItoRunner {
 
         let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
         return try self.postcardDecoder.decode(HomeLayout.self, from: responseBytes)
+    }
+
+    /// Executes `get_home_stream()` and returns true if it pushed components directly.
+    public func getHomeStream() async throws -> Bool {
+        guard let instance = instance else { return false }
+        guard instance.exports["get_home_stream"] != nil else { return false }
+
+        let result = try self.executeExport("get_home_stream")
+        guard let resultVal = result.first, case .i32(let ret) = resultVal else {
+            throw ItoError.wasmTrap("Expected i32 response from get_home_stream")
+        }
+
+        return ret != 0
+    }
+
+    /// Executes `get_settings()` if exported by the plugin
+    public func getSettings() async throws -> SettingsSchema? {
+        guard let instance = instance else { return nil }
+        guard instance.exports["get_settings"] != nil else { return nil }
+
+        let result = try self.executeExport("get_settings")
+        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+        }
+
+        if packed == 0 { return nil }
+
+        let responseLen = Int(packed & 0xFFFF_FFFF)
+        let responsePtr = Int(packed >> 32)
+        defer {
+            deallocBytes(
+                ptr: Int32(bitPattern: UInt32(responsePtr)),
+                len: Int32(bitPattern: UInt32(responseLen)))
+        }
+
+        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+        return try self.postcardDecoder.decode(SettingsSchema.self, from: responseBytes)
+    }
+
+
+    /// Executes `handle_url()` if exported by the plugin
+    public func handleUrl(_ url: String) async throws -> LinkValue? {
+        guard let instance = instance else { return nil }
+        guard instance.exports["handle_url"] != nil else { return nil }
+
+        let (urlPtr, urlLen) = try allocString(url)
+        let result = try self.executeExport("handle_url", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
+        
+        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+            throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_url")
+        }
+
+        if packed == 0 { return nil }
+
+        let responseLen = Int(packed & 0xFFFF_FFFF)
+        let responsePtr = Int(packed >> 32)
+        defer { deallocBytes(ptr: Int32(bitPattern: UInt32(responsePtr)), len: Int32(bitPattern: UInt32(responseLen))) }
+
+        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+        return try self.postcardDecoder.decode(LinkValue.self, from: responseBytes)
     }
 
     private func allocString(_ string: String) throws -> (ptr: Int32, len: Int32) {

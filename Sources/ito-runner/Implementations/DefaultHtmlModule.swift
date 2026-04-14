@@ -61,6 +61,40 @@ public final class DefaultHtmlModule: HtmlModule, @unchecked Sendable {
         return try element.text()
     }
 
+    public func ownText(elementId: UInt32) throws -> String {
+        lock.lock()
+        guard let element = elements[elementId] else {
+            lock.unlock()
+            throw ItoError.hostModuleError(
+                domain: "html", message: "Invalid element ID: \(elementId)")
+        }
+        lock.unlock()
+        return try element.ownText()
+    }
+
+    public func html(elementId: UInt32) throws -> String {
+        lock.lock()
+        guard let element = elements[elementId] else {
+            lock.unlock()
+            throw ItoError.hostModuleError(
+                domain: "html", message: "Invalid element ID: \(elementId)")
+        }
+        lock.unlock()
+        return try element.html()
+    }
+
+    public func outerHtml(elementId: UInt32) throws -> String {
+        lock.lock()
+        guard let element = elements[elementId] else {
+            lock.unlock()
+            throw ItoError.hostModuleError(
+                domain: "html", message: "Invalid element ID: \(elementId)")
+        }
+        lock.unlock()
+        // Default to outerHtml, SwiftSoup nodes have it
+        return try element.outerHtml()
+    }
+
     public func attr(elementId: UInt32, name: String) throws -> String? {
         lock.lock()
         guard let element = elements[elementId] else {
