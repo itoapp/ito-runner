@@ -15,8 +15,10 @@ public class WasmBridge {
     public var defaultsModule: DefaultsModule?
     public var envModule: EnvModule?
     public var uiModule: UiModule?
+    public var webviewModule: WebviewModule?
 
     private var pendingNetResponseBytes: [UInt8]?
+    private var pendingWebviewResponseBytes: [UInt8]?
 
     public init(runner: ItoRunner) {
         self.runner = runner
@@ -678,6 +680,128 @@ public class WasmBridge {
             return []
         }
 
+        let webviewLoadUrl = Function(store: store, parameters: [.i32, .i32], results: [.i32]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let requestPtr = args[0].i32
+            let requestLen = args[1].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                throw ItoError.wasmTrap("Plugin must export linear memory")
+            }
+
+            let requestBytes = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(requestPtr), count: Int(requestLen)
+            ) { buffer in Array(buffer) }
+
+            do {
+                let request = try self.runner.postcardDecoder.decode(WebviewRequest.self, from: requestBytes)
+
+                class ResultBox: @unchecked Sendable {
+                    var response: WebviewResponse?
+                    var error: Error?
+                }
+
+                let box = ResultBox()
+                let module = self.webviewModule
+                let sem = DispatchSemaphore(value: 0)
+
+                Task {
+                    do {
+                        if let module = module {
+                            box.response = try await module.loadUrl(request: request)
+                        } else {
+                            throw ItoError.hostModuleError(domain: "webview", message: "WebviewModule not provided")
+                        }
+                    } catch {
+                        box.error = error
+                    }
+                    sem.signal()
+                }
+                sem.wait()
+
+                if let error = box.error {
+                    print("WasmBridge: webviewLoadUrl FFI Error: \(error)")
+                    throw ItoError.wasmTrap("FFI Error in webview_load_url: \(error.localizedDescription)")
+                }
+
+                let responseBytes = try self.runner.postcardEncoder.encode(box.response!)
+                self.pendingWebviewResponseBytes = responseBytes
+                return [.i32(UInt32(responseBytes.count))]
+            } catch {
+                print("WasmBridge: webviewLoadUrl exception: \(error)")
+                throw ItoError.wasmTrap("Failed to process WebviewRequest: \(error)")
+            }
+        }
+
+        let webviewExecuteJs = Function(store: store, parameters: [.i32, .i32], results: [.i32]) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let requestPtr = args[0].i32
+            let requestLen = args[1].i32
+
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                throw ItoError.wasmTrap("Plugin must export linear memory")
+            }
+
+            let scriptString = memory.withUnsafeMutableBufferPointer(
+                offset: UInt(requestPtr), count: Int(requestLen)
+            ) { buffer in String(decoding: buffer, as: UTF8.self) }
+
+            class ResultBox: @unchecked Sendable {
+                var response: String?
+                var error: Error?
+            }
+
+            let box = ResultBox()
+            let module = self.webviewModule
+            let sem = DispatchSemaphore(value: 0)
+
+            Task {
+                do {
+                    if let module = module {
+                        box.response = try await module.executeJs(script: scriptString)
+                    } else {
+                        throw ItoError.hostModuleError(domain: "webview", message: "WebviewModule not provided")
+                    }
+                } catch {
+                    box.error = error
+                }
+                sem.signal()
+            }
+            sem.wait()
+
+            if let error = box.error {
+                print("WasmBridge: webviewExecuteJs FFI Error: \(error)")
+                throw ItoError.wasmTrap("FFI Error in webview_execute_js: \(error.localizedDescription)")
+            }
+
+            let responseBytes = Array(box.response!.utf8)
+            self.pendingWebviewResponseBytes = responseBytes
+            return [.i32(UInt32(responseBytes.count))]
+        }
+
+        let webviewReadResult = Function(store: store, parameters: [.i32], results: []) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let destPtr = args[0].i32
+
+            guard let bytes = self.pendingWebviewResponseBytes else {
+                throw ItoError.wasmTrap("webview_read_result called but no pending response bytes exist")
+            }
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                throw ItoError.wasmTrap("Plugin must export linear memory")
+            }
+
+            memory.withUnsafeMutableBufferPointer(offset: UInt(destPtr), count: bytes.count) { buffer in
+                bytes.withUnsafeBytes { src in buffer.copyMemory(from: UnsafeRawBufferPointer(src)) }
+            }
+
+            self.pendingWebviewResponseBytes = nil
+            return []
+        }
+
+
         let imports: Imports = [
             "ito:core/net": [
                 "fetch": netFetch,
@@ -706,6 +830,11 @@ public class WasmBridge {
             ],
             "ito:core/ui": [
                 "push_home_component": uiPushHomeComponent
+            ],
+            "ito:core/webview": [
+                "webview_load_url": webviewLoadUrl,
+                "webview_execute_js": webviewExecuteJs,
+                "webview_read_result": webviewReadResult
             ]
         ]
 

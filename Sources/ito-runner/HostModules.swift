@@ -95,4 +95,29 @@ public protocol UiModule: Sendable {
     func pushHomeComponent(_ component: HomeComponent)
 }
 
+// MARK: - Webview Module
 
+public protocol WebviewModule: Sendable {
+    func loadUrl(request: WebviewRequest) async throws -> WebviewResponse
+    func executeJs(script: String) async throws -> String
+}
+
+public struct WebviewRequest: Codable, Sendable {
+    public let url: String
+    public let script: String?
+
+    public init(url: String, script: String?) {
+        self.url = url
+        self.script = script
+    }
+}
+
+public struct WebviewResponse: Codable, Sendable {
+    public let url: String
+    public let html: String
+
+    public init(url: String, html: String) {
+        self.url = url
+        self.html = html
+    }
+}
