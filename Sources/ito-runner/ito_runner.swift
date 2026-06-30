@@ -239,11 +239,36 @@ public actor ItoRunner {
         }
     }
 
+    /// Execute a function exported by the Wasm module asynchronously off the cooperative thread pool.
+    /// This prevents DispatchSemaphore deadlocks in host functions.
+    public func executeExportAsync(_ name: String, args: [Value] = []) async throws -> [Value] {
+        guard let instance = instance else {
+            throw ItoError.wasmTrap("Instance is not initialized.")
+        }
+
+        guard let exportedItem = instance.exports[name],
+            case .function(let function) = exportedItem
+        else {
+            throw ItoError.wasmTrap("Function '\(name)' not exported by plugin.")
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let result = try function(args)
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: ItoError.wasmTrap("Execution of '\(name)' failed: \(error.localizedDescription)"))
+                }
+            }
+        }
+    }
+
     // MARK: - Core Execution API
 
     /// Executes `get_home()`
     public func getHome() async throws -> HomeLayout {
-        let result = try self.executeExport("get_home")
+        let result = try await self.executeExportAsync("get_home")
 
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
             throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
@@ -266,7 +291,7 @@ public actor ItoRunner {
         guard let instance = instance else { return false }
         guard instance.exports["get_home_stream"] != nil else { return false }
 
-        let result = try self.executeExport("get_home_stream")
+        let result = try await self.executeExportAsync("get_home_stream")
         guard let resultVal = result.first, case .i32(let ret) = resultVal else {
             throw ItoError.wasmTrap("Expected i32 response from get_home_stream")
         }
@@ -279,7 +304,7 @@ public actor ItoRunner {
         guard let instance = instance else { return nil }
         guard instance.exports["get_settings"] != nil else { return nil }
 
-        let result = try self.executeExport("get_settings")
+        let result = try await self.executeExportAsync("get_settings")
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
             throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
         }
@@ -305,7 +330,7 @@ public actor ItoRunner {
         guard instance.exports["handle_url"] != nil else { return nil }
 
         let (urlPtr, urlLen) = try allocString(url)
-        let result = try self.executeExport("handle_url", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
+        let result = try await self.executeExportAsync("handle_url", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
         
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
             throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_url")
@@ -327,7 +352,7 @@ public actor ItoRunner {
         guard instance.exports["handle_image"] != nil else { return nil }
 
         let (urlPtr, urlLen) = try allocString(url)
-        let result = try self.executeExport("handle_image", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
+        let result = try await self.executeExportAsync("handle_image", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
         
         guard let resultVal = result.first, case .i64(let packed) = resultVal else {
             throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_image")
@@ -379,7 +404,7 @@ public actor ItoRunner {
         let fInfo = try allocBytes(fBytes)
         defer { deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_search_manga_list",
             args: [
                 .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
@@ -409,7 +434,7 @@ public actor ItoRunner {
         let lInfo = try allocBytes(lBytes)
         defer { deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_manga_list",
             args: [
                 .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
@@ -442,7 +467,7 @@ public actor ItoRunner {
         let mInfo = try allocBytes(mBytes)
         defer { deallocBytes(ptr: mInfo.ptr, len: mInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_manga_update",
             args: [
                 .i32(UInt32(bitPattern: mInfo.ptr)), .i32(UInt32(bitPattern: mInfo.len)),
@@ -475,7 +500,7 @@ public actor ItoRunner {
         let cInfo = try allocBytes(cBytes)
         defer { deallocBytes(ptr: cInfo.ptr, len: cInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_page_list",
             args: [
                 .i32(UInt32(bitPattern: mInfo.ptr)), .i32(UInt32(bitPattern: mInfo.len)),
@@ -510,7 +535,7 @@ public actor ItoRunner {
         let fInfo = try allocBytes(fBytes)
         defer { deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_search_anime_list",
             args: [
                 .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
@@ -540,7 +565,7 @@ public actor ItoRunner {
         let lInfo = try allocBytes(lBytes)
         defer { deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_anime_list",
             args: [
                 .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
@@ -573,7 +598,7 @@ public actor ItoRunner {
         let aInfo = try allocBytes(aBytes)
         defer { deallocBytes(ptr: aInfo.ptr, len: aInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_anime_update",
             args: [
                 .i32(UInt32(bitPattern: aInfo.ptr)), .i32(UInt32(bitPattern: aInfo.len)),
@@ -606,7 +631,7 @@ public actor ItoRunner {
         let eInfo = try allocBytes(eBytes)
         defer { deallocBytes(ptr: eInfo.ptr, len: eInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_video_list",
             args: [
                 .i32(UInt32(bitPattern: aInfo.ptr)), .i32(UInt32(bitPattern: aInfo.len)),
@@ -641,7 +666,7 @@ public actor ItoRunner {
         let fInfo = try allocBytes(fBytes)
         defer { deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_search_novel_list",
             args: [
                 .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
@@ -671,7 +696,7 @@ public actor ItoRunner {
         let lInfo = try allocBytes(lBytes)
         defer { deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_novel_list",
             args: [
                 .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
@@ -704,7 +729,7 @@ public actor ItoRunner {
         let nInfo = try allocBytes(nBytes)
         defer { deallocBytes(ptr: nInfo.ptr, len: nInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_novel_update",
             args: [
                 .i32(UInt32(bitPattern: nInfo.ptr)), .i32(UInt32(bitPattern: nInfo.len)),
@@ -737,7 +762,7 @@ public actor ItoRunner {
         let cInfo = try allocBytes(cBytes)
         defer { deallocBytes(ptr: cInfo.ptr, len: cInfo.len) }
 
-        let result = try self.executeExport(
+        let result = try await self.executeExportAsync(
             "get_chapter_content",
             args: [
                 .i32(UInt32(bitPattern: nInfo.ptr)), .i32(UInt32(bitPattern: nInfo.len)),
