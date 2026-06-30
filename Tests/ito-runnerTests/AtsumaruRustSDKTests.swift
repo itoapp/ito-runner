@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import Testing
 
@@ -60,13 +61,13 @@ struct AtsumaruRustSDKTests {
         // Use Swift ItoRunner FFI call to traverse memory boundaries -> Rust -> Web Request -> Deserialization
         let result = try await runner.getMangaList(listing: listing, page: 1)
 
-        print("Fetched \(result.entries.count) mangas")
+        RunnerLogger.core.debug("\("Fetched \(result.entries.count)") mangas")
         #expect(result.entries.count > 0, "Atsumaru search results should not be empty")
         #expect(result.entries.count == 24, "Atsumaru defaults to 24 items per page")
 
         // Grab the first element
         if let firstManga = result.entries.first {
-            print("Top result: \(firstManga.title) (Key: \(firstManga.key))")
+            RunnerLogger.core.debug("\("Top result: \(firstManga.title)") (Key: \(firstManga.key))")
             #expect(!firstManga.key.isEmpty, "Manga must have a key ID")
             #expect(!firstManga.title.isEmpty, "Manga must have a title")
             #expect(firstManga.cover != nil, "Manga must have a cover image populated")
@@ -99,7 +100,7 @@ struct AtsumaruRustSDKTests {
         #expect(updatedManga.chapters != nil, "Chapters array must be created")
 
         if let chapters = updatedManga.chapters {
-            print("Found \(chapters.count) chapters")
+            RunnerLogger.core.debug("\("Found \(chapters.count)") chapters")
             #expect(chapters.count > 0, "Manga should have parsed chapter items")
             if let firstChapter = chapters.first {
                 #expect(!firstChapter.key.isEmpty, "Chapters should have a valid unique ID string")
@@ -120,7 +121,7 @@ struct AtsumaruRustSDKTests {
         let query = "Estate"
         let result = try await runner.getSearchMangaList(query: query, page: 1, filters: nil)
 
-        print("Search fetched \(result.entries.count) mangas")
+        RunnerLogger.core.debug("\("Search fetched \(result.entries.count)") mangas")
         #expect(result.entries.count > 0, "Search results should not be empty")
 
         if let firstManga = result.entries.first {
@@ -169,7 +170,7 @@ struct AtsumaruRustSDKTests {
         for mangaId in tests {
             let manga = Manga(key: mangaId, title: "", status: .Unknown, contentRating: .Safe)
 
-            print("[DEBUG] Fetching manga update for \(mangaId)...")
+            RunnerLogger.core.debug("\("[DEBUG] Fetching manga update for \(mangaId)")...")
             let updatedManga = try await runner.getMangaUpdate(
                 manga: manga,
                 needsDetails: true,
@@ -177,8 +178,7 @@ struct AtsumaruRustSDKTests {
             )
 
             #expect(!updatedManga.title.isEmpty, "Title should be populated for \(mangaId)")
-            print(
-                "Successfully updated \(mangaId): \(updatedManga.title), chapters: \(updatedManga.chapters?.count ?? 0)"
+            RunnerLogger.core.debug("\("Successfully updated \(mangaId)"): \(updatedManga.title), chapters: \(updatedManga.chapters?.count ?? 0)"
             )
         }
     }

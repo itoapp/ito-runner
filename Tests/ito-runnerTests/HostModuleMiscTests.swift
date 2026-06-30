@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import Testing
 import WAT
@@ -16,7 +17,7 @@ final class MockJsModule: JsModule, Sendable {
 }
 
 final class MockStdModule: StdModule, Sendable {
-    func print(message: String) {
+    func RunnerLogger.core.debug("\(message: String)") {
         // Assertions are tricky without shared state, but we can verify it doesn't crash
     }
 }

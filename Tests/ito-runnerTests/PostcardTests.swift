@@ -1,3 +1,4 @@
+import OSLog
 import Testing
 import Foundation
 @testable import ito_runner
@@ -46,7 +47,7 @@ struct PostcardCodecTests {
 
         let original = ComplexStruct(values: [-1, 0, 1, 100], optionalString: nil)
 
-        let encoded = try encoder.encode(original); print("ENCODED BYTES: \(encoded)")
+        let encoded = try encoder.encode(original); RunnerLogger.core.debug("ENCODED BYTES: \(encoded)")
         let decoded = try decoder.decode(ComplexStruct.self, from: encoded)
 
         #expect(decoded == original)

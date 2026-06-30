@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import Testing
 
@@ -355,16 +356,16 @@ struct HiAnimeVideoTests {
                 guard let embedUrl = megaVideo.map({ String($0.url) }) else { continue }
 
                 // --- ADDED PRINT STATEMENTS HERE ---
-                print("🎬 Selected Anime: \(entry.title)")
-                print("📺 Selected Episode Key: \(episode.key)")
+                RunnerLogger.core.debug("🎬 Selected Anime: \(entry.title)")
+                RunnerLogger.core.debug("📺 Selected Episode Key: \(episode.key)")
                 // -----------------------------------
 
-                print("Extracting from: \(embedUrl)")
+                RunnerLogger.core.debug("Extracting from: \(embedUrl)")
                 guard let playlist = try await extractor.extract(embedUrl: embedUrl) else {
                     Issue.record("MegaCloud extraction returned nil for \(embedUrl)")
                     return
                 }
-                print("Playlist URL: \(playlist)")
+                RunnerLogger.core.debug("Playlist URL: \(playlist)")
                 #expect(
                     playlist.contains(".m3u8"), "Expected an HLS playlist URL, got: \(playlist)")
                 return
@@ -402,7 +403,7 @@ struct HiAnimeVideoTests {
                 }
                 #expect(track.kind != nil, "Track should have a kind field")
             }
-            print("Subtitle tracks: \(tracks.count)")
+            RunnerLogger.core.debug("Subtitle tracks: \(tracks.count)")
         }
     }
 
@@ -433,7 +434,7 @@ struct HiAnimeVideoTests {
             }
             #expect(URL(string: file) != nil, "Caption URL must be parseable: \(file)")
         }
-        print("Caption tracks: \(captions.count)")
+        RunnerLogger.core.debug("Caption tracks: \(captions.count)")
     }
 
     @Test("MegaCloud extractFull skip ranges are ordered (start < end) when present")
@@ -460,12 +461,12 @@ struct HiAnimeVideoTests {
             if let intro = result.intro, intro.end > 0 {
                 #expect(intro.start >= 0, "Intro start must be non-negative")
                 #expect(intro.end > intro.start, "Intro end must be after start")
-                print("Intro: \(intro.start)s – \(intro.end)s")
+                RunnerLogger.core.debug("\("Intro: \(intro.start)")s – \(intro.end)s")
             }
             if let outro = result.outro, outro.end > 0 {
                 #expect(outro.start >= 0, "Outro start must be non-negative")
                 #expect(outro.end > outro.start, "Outro end must be after start")
-                print("Outro: \(outro.start)s – \(outro.end)s")
+                RunnerLogger.core.debug("\("Outro: \(outro.start)")s – \(outro.end)s")
             }
             break
         }
@@ -524,7 +525,7 @@ struct HiAnimeMultiEpisodeTests {
 
             if successCount > 0 {
                 #expect(successCount > 0, "At least one of 3 episodes should extract successfully")
-                print("Extracted \(successCount)/3 episode(s) for \(update.title)")
+                RunnerLogger.core.debug("\("Extracted \(successCount)")/3 episode(s) for \(update.title)")
                 return
             }
         }
@@ -874,7 +875,7 @@ struct MegacloudExtractor {
         guard let html = String(data: htmlData, encoding: .utf8) else { return nil }
 
         guard let nonce = extractNonce(from: html) else { return nil }
-        print("Found Nonce: \(nonce)")
+        RunnerLogger.core.debug("Found Nonce: \(nonce)")
 
         // Build getSources URL.
         // FIX: always include "/" between domain and basePath; without it the URL becomes

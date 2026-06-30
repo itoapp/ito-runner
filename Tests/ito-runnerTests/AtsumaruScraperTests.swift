@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import Testing
 
@@ -174,7 +175,7 @@ struct AtsumaruScraperTests {
         if let first = entries.first {
             #expect(!first.key.isEmpty)
             #expect(!first.title.isEmpty)
-            print("First manga from search: \(first.title)")
+            RunnerLogger.core.debug("First manga from search: \(first.title)")
         }
     }
 
@@ -224,7 +225,7 @@ struct AtsumaruScraperTests {
 
         #expect(!manga.title.isEmpty, "Manga title should be populated")
         #expect(manga.cover != nil, "Manga cover should be populated")
-        print("Updated Manga: \(manga.title) - \(manga.status)")
+        RunnerLogger.core.debug("\("Updated Manga: \(manga.title)") - \(manga.status)")
 
         // 2. Fetch Chapters
         let chaptersURL = "\(apiBase)/manga/allChapters?mangaId=\(mangaId)"
@@ -258,8 +259,7 @@ struct AtsumaruScraperTests {
         if let first = chapters.first {
             #expect(!first.key.isEmpty)
             #expect(first.chapter != nil)
-            print(
-                "Successfully loaded \(chapters.count) chapters. First chapter is \(first.chapter ?? 0) by \(first.scanlator ?? "Unknown")"
+            RunnerLogger.core.debug("Successfully loaded \(chapters.count)") chapters. First chapter is \(first.chapter ?? 0) by \(first.scanlator ?? "Unknown"
             )
         }
 
@@ -277,7 +277,7 @@ struct AtsumaruScraperTests {
             }
 
             #expect(!pages.isEmpty, "Pages should not be empty")
-            print("Chapter \(firstChap.chapter ?? 0) contains \(pages.count) pages.")
+            RunnerLogger.core.debug("\("Chapter \(firstChap.chapter ?? 0)") contains \(pages.count) pages.")
         }
     }
 }

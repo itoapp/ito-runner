@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import Testing
 
@@ -199,8 +200,8 @@ struct PostcardDetailedTests {
         )
 
         let data = try encoder.encode(parent)
-        print("Encoded length: \(data.count)")
-        print("Encoded data: \(data)")
+        RunnerLogger.core.debug("Encoded length: \(data.count)")
+        RunnerLogger.core.debug("Encoded data: \(data)")
 
         do {
             let decoded = try decoder.decode(Parent.self, from: data)
@@ -208,7 +209,7 @@ struct PostcardDetailedTests {
             #expect(decoded.children == parent.children)
             #expect(decoded.metadata == parent.metadata)
         } catch {
-            print("Caught error: \(error)")
+            RunnerLogger.core.error("Caught error: \(error)")
             throw error
         }
     }

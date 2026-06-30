@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import JavaScriptCore
 
@@ -23,7 +24,7 @@ public final class DefaultJsModule: JsModule, @unchecked Sendable {
 
         // Define a simple console.log for debugging JS within the plugin
         let consoleLog: @convention(block) (String) -> Void = { message in
-            print("[JS Log] \(message)")
+            RunnerLogger.js.debug("[JS Log] \(message)")
         }
 
         let console = context.objectForKeyedSubscript("console")
@@ -37,7 +38,7 @@ public final class DefaultJsModule: JsModule, @unchecked Sendable {
 
         context.exceptionHandler = { _, exception in
             if let exc = exception {
-                print("[JS Exception] \(exc.toString() ?? "Unknown exception")")
+                RunnerLogger.js.error("[JS Exception] \(exc.toString() ?? "Unknown exception")")
             }
         }
 

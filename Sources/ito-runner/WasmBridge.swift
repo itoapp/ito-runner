@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import WasmKit
 
@@ -235,7 +236,7 @@ public class WasmBridge {
             }
 
             let elementId = try module.parse(html: htmlString)
-            // print("WasmBridge HtmlParse returning: \(elementId)")
+            // RunnerLogger.bridge.debug("WasmBridge HtmlParse returning: \(elementId)")
             return [.i32(elementId)]
         }
 
@@ -262,7 +263,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
-            // print("WasmBridge HtmlSelect(id: \(elementId), selector: '\(selectorString)')")
+            // RunnerLogger.bridge.debug("\("WasmBridge HtmlSelect(id: \(elementId)"), selector: '\(selectorString)')")
             let resultIds = try module.select(elementId: elementId, selector: selectorString)
             let resultInt32s = resultIds.map { Int32(bitPattern: $0) }
             let responseBytes = try self.runner.postcardEncoder.encode(resultInt32s)
@@ -300,7 +301,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
-            // print("WasmBridge HtmlText(id: \(elementId))")
+            // RunnerLogger.bridge.debug("\("WasmBridge HtmlText(id: \(elementId)"))")
             let text = try module.text(elementId: elementId)
             let responseBytes = try self.runner.postcardEncoder.encode(text)
 
@@ -346,7 +347,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
-            // print("WasmBridge HtmlAttr(id: \(elementId), name: '\(attrName)')")
+            // RunnerLogger.bridge.debug("\("WasmBridge HtmlAttr(id: \(elementId)"), name: '\(attrName)')")
             let attrVal = try module.attr(elementId: elementId, name: attrName)
             var responseBytes: [UInt8] = []
             if let val = attrVal {
@@ -384,7 +385,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
-            // print("WasmBridge HtmlFree(id: \(elementId))")
+            // RunnerLogger.bridge.debug("\("WasmBridge HtmlFree(id: \(elementId)"))")
             module.free(elementId: elementId)
             return []
         }
@@ -721,7 +722,7 @@ public class WasmBridge {
                 sem.wait()
 
                 if let error = box.error {
-                    print("WasmBridge: webviewLoadUrl FFI Error: \(error)")
+                    RunnerLogger.bridge.error("WasmBridge: webviewLoadUrl FFI Error: \(error)")
                     throw ItoError.wasmTrap("FFI Error in webview_load_url: \(error.localizedDescription)")
                 }
 
@@ -729,7 +730,7 @@ public class WasmBridge {
                 self.pendingWebviewResponseBytes = responseBytes
                 return [.i32(UInt32(responseBytes.count))]
             } catch {
-                print("WasmBridge: webviewLoadUrl exception: \(error)")
+                RunnerLogger.bridge.error("WasmBridge: webviewLoadUrl exception: \(error)")
                 throw ItoError.wasmTrap("Failed to process WebviewRequest: \(error)")
             }
         }
@@ -772,7 +773,7 @@ public class WasmBridge {
             sem.wait()
 
             if let error = box.error {
-                print("WasmBridge: webviewExecuteJs FFI Error: \(error)")
+                RunnerLogger.bridge.error("WasmBridge: webviewExecuteJs FFI Error: \(error)")
                 throw ItoError.wasmTrap("FFI Error in webview_execute_js: \(error.localizedDescription)")
             }
 

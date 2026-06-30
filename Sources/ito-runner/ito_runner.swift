@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import WasmKit
 import ZIPFoundation
@@ -390,7 +391,7 @@ public actor ItoRunner {
             _ = try self.executeExport(
                 "dealloc", args: [.i32(UInt32(bitPattern: ptr)), .i32(UInt32(bitPattern: len))])
         } catch {
-            print("[ItoRunner] Warning: Failed to dealloc memory at \(ptr) (len \(len))")
+            RunnerLogger.core.error("\("[ItoRunner] Warning: Failed to dealloc memory at \(ptr)") (len \(len))")
         }
     }
 
@@ -462,7 +463,7 @@ public actor ItoRunner {
         async throws -> Manga {
         let mBytes = try self.postcardEncoder.encode(manga)
         let hexString = mBytes.map { String(format: "%02x", $0) }.joined()
-        print("[DEBUG] getMangaUpdate Swift Manga Payload (len \(mBytes.count)): \(hexString)")
+        RunnerLogger.core.debug("\("[DEBUG] getMangaUpdate Swift Manga Payload (len \(mBytes.count)")): \(hexString)")
 
         let mInfo = try allocBytes(mBytes)
         defer { deallocBytes(ptr: mInfo.ptr, len: mInfo.len) }
@@ -593,7 +594,7 @@ public actor ItoRunner {
         async throws -> Anime {
         let aBytes = try self.postcardEncoder.encode(anime)
         let hexString = aBytes.map { String(format: "%02x", $0) }.joined()
-        print("[DEBUG] getAnimeUpdate Swift Anime Payload (len \(aBytes.count)): \(hexString)")
+        RunnerLogger.core.debug("\("[DEBUG] getAnimeUpdate Swift Anime Payload (len \(aBytes.count)")): \(hexString)")
 
         let aInfo = try allocBytes(aBytes)
         defer { deallocBytes(ptr: aInfo.ptr, len: aInfo.len) }
@@ -724,7 +725,7 @@ public actor ItoRunner {
         async throws -> Novel {
         let nBytes = try self.postcardEncoder.encode(novel)
         let hexString = nBytes.map { String(format: "%02x", $0) }.joined()
-        print("[DEBUG] getNovelUpdate Swift Novel Payload (len \(nBytes.count)): \(hexString)")
+        RunnerLogger.core.debug("\("[DEBUG] getNovelUpdate Swift Novel Payload (len \(nBytes.count)")): \(hexString)")
 
         let nInfo = try allocBytes(nBytes)
         defer { deallocBytes(ptr: nInfo.ptr, len: nInfo.len) }

@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import Testing
 @testable import ito_runner
@@ -23,7 +24,7 @@ struct PostcardDictionaryTests {
 
         let map = StringMap(values: ["A": "B"])
         let encoded = try encoder.encode(map)
-        print("Encoded: \(encoded)")
+        RunnerLogger.core.debug("Encoded: \(encoded)")
 
         let decoded = try decoder.decode(StringMap.self, from: encoded)
         #expect(decoded == map)

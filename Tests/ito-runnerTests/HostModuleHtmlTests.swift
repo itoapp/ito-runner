@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import Testing
 import WAT
@@ -147,8 +148,8 @@ struct HostModuleHtmlTests {
         let responseBytes = try await runner.readMemory(
             offset: Int(responsePtr), length: Int(responseLen))
 
-        print("responseBytes length: \(responseBytes.count)")
-        print("responseBytes: \(responseBytes)")
+        RunnerLogger.core.debug("responseBytes length: \(responseBytes.count)")
+        RunnerLogger.core.debug("responseBytes: \(responseBytes)")
 
         let elements = try runner.postcardDecoder.decode([Int32].self, from: responseBytes)
         #expect(elements == [43, 44])
