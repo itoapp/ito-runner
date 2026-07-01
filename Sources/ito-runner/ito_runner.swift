@@ -32,6 +32,21 @@ public actor ItoRunner {
     public var uiModule: UiModule?
     public var webviewModule: WebviewModule?
 
+    private let executionQueue = DispatchQueue(label: "moe.itoapp.runner.execution")
+
+    private func performSerialized<T>(_ operation: @escaping () throws -> T) async throws -> T {
+        return try await withCheckedThrowingContinuation { continuation in
+            executionQueue.async {
+                do {
+                    let result = try operation()
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     /// Initializes a new runner instance.
     public init() {
         self.registry = DescriptorRegistry()
@@ -240,133 +255,120 @@ public actor ItoRunner {
         }
     }
 
-    /// Execute a function exported by the Wasm module asynchronously off the cooperative thread pool.
-    /// This prevents DispatchSemaphore deadlocks in host functions.
-    public func executeExportAsync(_ name: String, args: [Value] = []) async throws -> [Value] {
-        guard let instance = instance else {
-            throw ItoError.wasmTrap("Instance is not initialized.")
-        }
 
-        guard let exportedItem = instance.exports[name],
-            case .function(let function) = exportedItem
-        else {
-            throw ItoError.wasmTrap("Function '\(name)' not exported by plugin.")
-        }
-
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let result = try function(args)
-                    continuation.resume(returning: result)
-                } catch {
-                    continuation.resume(throwing: ItoError.wasmTrap("Execution of '\(name)' failed: \(error.localizedDescription)"))
-                }
-            }
-        }
-    }
 
     // MARK: - Core Execution API
 
     /// Executes `get_home()`
     public func getHome() async throws -> HomeLayout {
-        let result = try await self.executeExportAsync("get_home")
+        return try await performSerialized {
+            let result = try self.executeExport("get_home")
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(HomeLayout.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(HomeLayout.self, from: responseBytes)
     }
 
     /// Executes `get_home_stream()` and returns true if it pushed components directly.
     public func getHomeStream() async throws -> Bool {
-        guard let instance = instance else { return false }
-        guard instance.exports["get_home_stream"] != nil else { return false }
+        return try await performSerialized {
+            guard let instance = self.instance else { return false }
+            guard instance.exports["get_home_stream"] != nil else { return false }
 
-        let result = try await self.executeExportAsync("get_home_stream")
-        guard let resultVal = result.first, case .i32(let ret) = resultVal else {
-            throw ItoError.wasmTrap("Expected i32 response from get_home_stream")
+            let result = try self.executeExport("get_home_stream")
+            guard let resultVal = result.first, case .i32(let ret) = resultVal else {
+                throw ItoError.wasmTrap("Expected i32 response from get_home_stream")
+            }
+
+            return ret != 0
         }
-
-        return ret != 0
     }
 
     /// Executes `get_settings()` if exported by the plugin
     public func getSettings() async throws -> SettingsSchema? {
-        guard let instance = instance else { return nil }
-        guard instance.exports["get_settings"] != nil else { return nil }
+        return try await performSerialized {
+            guard let instance = self.instance else { return nil }
+            guard instance.exports["get_settings"] != nil else { return nil }
 
-        let result = try await self.executeExportAsync("get_settings")
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            let result = try self.executeExport("get_settings")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            if packed == 0 { return nil }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(SettingsSchema.self, from: responseBytes)
         }
-
-        if packed == 0 { return nil }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(SettingsSchema.self, from: responseBytes)
     }
 
 
     /// Executes `handle_url()` if exported by the plugin
     public func handleUrl(_ url: String) async throws -> LinkValue? {
-        guard let instance = instance else { return nil }
-        guard instance.exports["handle_url"] != nil else { return nil }
+        return try await performSerialized {
+            guard let instance = self.instance else { return nil }
+            guard instance.exports["handle_url"] != nil else { return nil }
 
-        let (urlPtr, urlLen) = try allocString(url)
-        let result = try await self.executeExportAsync("handle_url", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
-        
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_url")
+            let (urlPtr, urlLen) = try self.allocString(url)
+            let result = try self.executeExport("handle_url", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
+            
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_url")
+            }
+
+            if packed == 0 { return nil }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer { self.deallocBytes(ptr: Int32(bitPattern: UInt32(responsePtr)), len: Int32(bitPattern: UInt32(responseLen))) }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(LinkValue.self, from: responseBytes)
         }
-
-        if packed == 0 { return nil }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer { deallocBytes(ptr: Int32(bitPattern: UInt32(responsePtr)), len: Int32(bitPattern: UInt32(responseLen))) }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(LinkValue.self, from: responseBytes)
     }
 
     /// Executes `handle_image()` if exported by the plugin
     public func handleImage(_ url: String) async throws -> Data? {
-        guard let instance = instance else { return nil }
-        guard instance.exports["handle_image"] != nil else { return nil }
+        return try await performSerialized {
+            guard let instance = self.instance else { return nil }
+            guard instance.exports["handle_image"] != nil else { return nil }
 
-        let (urlPtr, urlLen) = try allocString(url)
-        let result = try await self.executeExportAsync("handle_image", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
-        
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_image")
+            let (urlPtr, urlLen) = try self.allocString(url)
+            let result = try self.executeExport("handle_image", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
+            
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_image")
+            }
+
+            if packed == 0 { return nil }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer { self.deallocBytes(ptr: Int32(bitPattern: UInt32(responsePtr)), len: Int32(bitPattern: UInt32(responseLen))) }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return Data(responseBytes)
         }
-
-        if packed == 0 { return nil }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer { deallocBytes(ptr: Int32(bitPattern: UInt32(responsePtr)), len: Int32(bitPattern: UInt32(responseLen))) }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return Data(responseBytes)
     }
 
     private func allocString(_ string: String) throws -> (ptr: Int32, len: Int32) {
@@ -398,130 +400,138 @@ public actor ItoRunner {
     /// Executes `get_search_manga_list(query: String, page: Int32, filters: [FilterStruct])`
     public func getSearchMangaList(query: String, page: Int32, filters: [FilterItem]?) async throws
         -> Manga.PageResult {
-        let qInfo = try allocString(query)
-        defer { deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
+        return try await performSerialized {
+            let qInfo = try self.allocString(query)
+            defer { self.deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
 
-        let fBytes = try self.postcardEncoder.encode(filters ?? [])
-        let fInfo = try allocBytes(fBytes)
-        defer { deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
+            let fBytes = try self.postcardEncoder.encode(filters ?? [])
+            let fInfo = try self.allocBytes(fBytes)
+            defer { self.deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_search_manga_list",
-            args: [
-                .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
-                .i32(UInt32(bitPattern: page)),
-                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
-            ])
+            let result = try self.executeExport(
+                "get_search_manga_list",
+                args: [
+                    .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
+                    .i32(UInt32(bitPattern: page)),
+                    .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Manga.PageResult.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Manga.PageResult.self, from: responseBytes)
     }
 
     /// Executes `get_manga_list(listing: Listing, page: Int32)`
     public func getMangaList(listing: Listing, page: Int32) async throws -> Manga.PageResult {
-        let lBytes = try self.postcardEncoder.encode(listing)
-        let lInfo = try allocBytes(lBytes)
-        defer { deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
+        return try await performSerialized {
+            let lBytes = try self.postcardEncoder.encode(listing)
+            let lInfo = try self.allocBytes(lBytes)
+            defer { self.deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_manga_list",
-            args: [
-                .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
-                .i32(UInt32(bitPattern: page))
-            ])
+            let result = try self.executeExport(
+                "get_manga_list",
+                args: [
+                    .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
+                    .i32(UInt32(bitPattern: page))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Manga.PageResult.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Manga.PageResult.self, from: responseBytes)
     }
 
     /// Executes `get_manga_update(manga: Manga, needs_details: Bool, needs_chapters: Bool)`
     public func getMangaUpdate(manga: Manga, needsDetails: Bool = true, needsChapters: Bool = true)
         async throws -> Manga {
-        let mBytes = try self.postcardEncoder.encode(manga)
-        let hexString = mBytes.map { String(format: "%02x", $0) }.joined()
-        RunnerLogger.core.debug("\("[DEBUG] getMangaUpdate Swift Manga Payload (len \(mBytes.count)")): \(hexString)")
+        return try await performSerialized {
+            let mBytes = try self.postcardEncoder.encode(manga)
+            let hexString = mBytes.map { String(format: "%02x", $0) }.joined()
+            RunnerLogger.core.debug("\("[DEBUG] getMangaUpdate Swift Manga Payload (len \(mBytes.count)")): \(hexString)")
 
-        let mInfo = try allocBytes(mBytes)
-        defer { deallocBytes(ptr: mInfo.ptr, len: mInfo.len) }
+            let mInfo = try self.allocBytes(mBytes)
+            defer { self.deallocBytes(ptr: mInfo.ptr, len: mInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_manga_update",
-            args: [
-                .i32(UInt32(bitPattern: mInfo.ptr)), .i32(UInt32(bitPattern: mInfo.len)),
-                .i32(needsDetails ? 1 : 0), .i32(needsChapters ? 1 : 0)
-            ])
+            let result = try self.executeExport(
+                "get_manga_update",
+                args: [
+                    .i32(UInt32(bitPattern: mInfo.ptr)), .i32(UInt32(bitPattern: mInfo.len)),
+                    .i32(needsDetails ? 1 : 0), .i32(needsChapters ? 1 : 0)
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Manga.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Manga.self, from: responseBytes)
     }
 
     /// Executes `get_page_list(manga: Manga, chapter: Chapter)`
     public func getPageList(manga: Manga, chapter: Manga.Chapter) async throws -> [Page] {
-        let mBytes = try self.postcardEncoder.encode(manga)
-        let mInfo = try allocBytes(mBytes)
-        defer { deallocBytes(ptr: mInfo.ptr, len: mInfo.len) }
+        return try await performSerialized {
+            let mBytes = try self.postcardEncoder.encode(manga)
+            let mInfo = try self.allocBytes(mBytes)
+            defer { self.deallocBytes(ptr: mInfo.ptr, len: mInfo.len) }
 
-        let cBytes = try self.postcardEncoder.encode(chapter)
-        let cInfo = try allocBytes(cBytes)
-        defer { deallocBytes(ptr: cInfo.ptr, len: cInfo.len) }
+            let cBytes = try self.postcardEncoder.encode(chapter)
+            let cInfo = try self.allocBytes(cBytes)
+            defer { self.deallocBytes(ptr: cInfo.ptr, len: cInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_page_list",
-            args: [
-                .i32(UInt32(bitPattern: mInfo.ptr)), .i32(UInt32(bitPattern: mInfo.len)),
-                .i32(UInt32(bitPattern: cInfo.ptr)), .i32(UInt32(bitPattern: cInfo.len))
-            ])
+            let result = try self.executeExport(
+                "get_page_list",
+                args: [
+                    .i32(UInt32(bitPattern: mInfo.ptr)), .i32(UInt32(bitPattern: mInfo.len)),
+                    .i32(UInt32(bitPattern: cInfo.ptr)), .i32(UInt32(bitPattern: cInfo.len))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode([Page].self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode([Page].self, from: responseBytes)
     }
 
     // MARK: - Anime Exports
@@ -529,130 +539,138 @@ public actor ItoRunner {
     /// Executes `get_search_anime_list(query: String, page: Int32, filters: [FilterStruct])`
     public func getSearchAnimeList(query: String, page: Int32, filters: [FilterItem]?) async throws
         -> Anime.PageResult {
-        let qInfo = try allocString(query)
-        defer { deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
+        return try await performSerialized {
+            let qInfo = try self.allocString(query)
+            defer { self.deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
 
-        let fBytes = try self.postcardEncoder.encode(filters ?? [])
-        let fInfo = try allocBytes(fBytes)
-        defer { deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
+            let fBytes = try self.postcardEncoder.encode(filters ?? [])
+            let fInfo = try self.allocBytes(fBytes)
+            defer { self.deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_search_anime_list",
-            args: [
-                .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
-                .i32(UInt32(bitPattern: page)),
-                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
-            ])
+            let result = try self.executeExport(
+                "get_search_anime_list",
+                args: [
+                    .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
+                    .i32(UInt32(bitPattern: page)),
+                    .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Anime.PageResult.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Anime.PageResult.self, from: responseBytes)
     }
 
     /// Executes `get_anime_list(listing: Listing, page: Int32)`
     public func getAnimeList(listing: Listing, page: Int32) async throws -> Anime.PageResult {
-        let lBytes = try self.postcardEncoder.encode(listing)
-        let lInfo = try allocBytes(lBytes)
-        defer { deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
+        return try await performSerialized {
+            let lBytes = try self.postcardEncoder.encode(listing)
+            let lInfo = try self.allocBytes(lBytes)
+            defer { self.deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_anime_list",
-            args: [
-                .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
-                .i32(UInt32(bitPattern: page))
-            ])
+            let result = try self.executeExport(
+                "get_anime_list",
+                args: [
+                    .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
+                    .i32(UInt32(bitPattern: page))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Anime.PageResult.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Anime.PageResult.self, from: responseBytes)
     }
 
     /// Executes `get_anime_update(anime: Anime, needs_details: Bool, needs_episodes: Bool)`
     public func getAnimeUpdate(anime: Anime, needsDetails: Bool = true, needsEpisodes: Bool = true)
         async throws -> Anime {
-        let aBytes = try self.postcardEncoder.encode(anime)
-        let hexString = aBytes.map { String(format: "%02x", $0) }.joined()
-        RunnerLogger.core.debug("\("[DEBUG] getAnimeUpdate Swift Anime Payload (len \(aBytes.count)")): \(hexString)")
+        return try await performSerialized {
+            let aBytes = try self.postcardEncoder.encode(anime)
+            let hexString = aBytes.map { String(format: "%02x", $0) }.joined()
+            RunnerLogger.core.debug("\("[DEBUG] getAnimeUpdate Swift Anime Payload (len \(aBytes.count)")): \(hexString)")
 
-        let aInfo = try allocBytes(aBytes)
-        defer { deallocBytes(ptr: aInfo.ptr, len: aInfo.len) }
+            let aInfo = try self.allocBytes(aBytes)
+            defer { self.deallocBytes(ptr: aInfo.ptr, len: aInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_anime_update",
-            args: [
-                .i32(UInt32(bitPattern: aInfo.ptr)), .i32(UInt32(bitPattern: aInfo.len)),
-                .i32(needsDetails ? 1 : 0), .i32(needsEpisodes ? 1 : 0)
-            ])
+            let result = try self.executeExport(
+                "get_anime_update",
+                args: [
+                    .i32(UInt32(bitPattern: aInfo.ptr)), .i32(UInt32(bitPattern: aInfo.len)),
+                    .i32(needsDetails ? 1 : 0), .i32(needsEpisodes ? 1 : 0)
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Anime.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Anime.self, from: responseBytes)
     }
 
     /// Executes `get_video_list(anime: Anime, episode: Episode)`
     public func getVideoList(anime: Anime, episode: Anime.Episode) async throws -> [Anime.Video] {
-        let aBytes = try self.postcardEncoder.encode(anime)
-        let aInfo = try allocBytes(aBytes)
-        defer { deallocBytes(ptr: aInfo.ptr, len: aInfo.len) }
+        return try await performSerialized {
+            let aBytes = try self.postcardEncoder.encode(anime)
+            let aInfo = try self.allocBytes(aBytes)
+            defer { self.deallocBytes(ptr: aInfo.ptr, len: aInfo.len) }
 
-        let eBytes = try self.postcardEncoder.encode(episode)
-        let eInfo = try allocBytes(eBytes)
-        defer { deallocBytes(ptr: eInfo.ptr, len: eInfo.len) }
+            let eBytes = try self.postcardEncoder.encode(episode)
+            let eInfo = try self.allocBytes(eBytes)
+            defer { self.deallocBytes(ptr: eInfo.ptr, len: eInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_video_list",
-            args: [
-                .i32(UInt32(bitPattern: aInfo.ptr)), .i32(UInt32(bitPattern: aInfo.len)),
-                .i32(UInt32(bitPattern: eInfo.ptr)), .i32(UInt32(bitPattern: eInfo.len))
-            ])
+            let result = try self.executeExport(
+                "get_video_list",
+                args: [
+                    .i32(UInt32(bitPattern: aInfo.ptr)), .i32(UInt32(bitPattern: aInfo.len)),
+                    .i32(UInt32(bitPattern: eInfo.ptr)), .i32(UInt32(bitPattern: eInfo.len))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode([Anime.Video].self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode([Anime.Video].self, from: responseBytes)
     }
 
     // MARK: - Novel Exports
@@ -660,129 +678,137 @@ public actor ItoRunner {
     /// Executes `get_search_novel_list(query: String, page: Int32, filters: [FilterStruct])`
     public func getSearchNovelList(query: String, page: Int32, filters: [FilterItem]?) async throws
         -> Novel.PageResult {
-        let qInfo = try allocString(query)
-        defer { deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
+        return try await performSerialized {
+            let qInfo = try self.allocString(query)
+            defer { self.deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
 
-        let fBytes = try self.postcardEncoder.encode(filters ?? [])
-        let fInfo = try allocBytes(fBytes)
-        defer { deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
+            let fBytes = try self.postcardEncoder.encode(filters ?? [])
+            let fInfo = try self.allocBytes(fBytes)
+            defer { self.deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_search_novel_list",
-            args: [
-                .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
-                .i32(UInt32(bitPattern: page)),
-                .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
-            ])
+            let result = try self.executeExport(
+                "get_search_novel_list",
+                args: [
+                    .i32(UInt32(bitPattern: qInfo.ptr)), .i32(UInt32(bitPattern: qInfo.len)),
+                    .i32(UInt32(bitPattern: page)),
+                    .i32(UInt32(bitPattern: fInfo.ptr)), .i32(UInt32(bitPattern: fInfo.len))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Novel.PageResult.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Novel.PageResult.self, from: responseBytes)
     }
 
     /// Executes `get_novel_list(listing: Listing, page: Int32)`
     public func getNovelList(listing: Listing, page: Int32) async throws -> Novel.PageResult {
-        let lBytes = try self.postcardEncoder.encode(listing)
-        let lInfo = try allocBytes(lBytes)
-        defer { deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
+        return try await performSerialized {
+            let lBytes = try self.postcardEncoder.encode(listing)
+            let lInfo = try self.allocBytes(lBytes)
+            defer { self.deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_novel_list",
-            args: [
-                .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
-                .i32(UInt32(bitPattern: page))
-            ])
+            let result = try self.executeExport(
+                "get_novel_list",
+                args: [
+                    .i32(UInt32(bitPattern: lInfo.ptr)), .i32(UInt32(bitPattern: lInfo.len)),
+                    .i32(UInt32(bitPattern: page))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Novel.PageResult.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Novel.PageResult.self, from: responseBytes)
     }
 
     /// Executes `get_novel_update(novel: Novel, needs_details: Bool, needs_chapters: Bool)`
     public func getNovelUpdate(novel: Novel, needsDetails: Bool = true, needsChapters: Bool = true)
         async throws -> Novel {
-        let nBytes = try self.postcardEncoder.encode(novel)
-        let hexString = nBytes.map { String(format: "%02x", $0) }.joined()
-        RunnerLogger.core.debug("\("[DEBUG] getNovelUpdate Swift Novel Payload (len \(nBytes.count)")): \(hexString)")
+        return try await performSerialized {
+            let nBytes = try self.postcardEncoder.encode(novel)
+            let hexString = nBytes.map { String(format: "%02x", $0) }.joined()
+            RunnerLogger.core.debug("\("[DEBUG] getNovelUpdate Swift Novel Payload (len \(nBytes.count)")): \(hexString)")
 
-        let nInfo = try allocBytes(nBytes)
-        defer { deallocBytes(ptr: nInfo.ptr, len: nInfo.len) }
+            let nInfo = try self.allocBytes(nBytes)
+            defer { self.deallocBytes(ptr: nInfo.ptr, len: nInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_novel_update",
-            args: [
-                .i32(UInt32(bitPattern: nInfo.ptr)), .i32(UInt32(bitPattern: nInfo.len)),
-                .i32(needsDetails ? 1 : 0), .i32(needsChapters ? 1 : 0)
-            ])
+            let result = try self.executeExport(
+                "get_novel_update",
+                args: [
+                    .i32(UInt32(bitPattern: nInfo.ptr)), .i32(UInt32(bitPattern: nInfo.len)),
+                    .i32(needsDetails ? 1 : 0), .i32(needsChapters ? 1 : 0)
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode(Novel.self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode(Novel.self, from: responseBytes)
     }
 
     /// Executes `get_chapter_content(novel: Novel, chapter: Chapter)`
     public func getChapterContent(novel: Novel, chapter: Novel.Chapter) async throws -> [Page] {
-        let nBytes = try self.postcardEncoder.encode(novel)
-        let nInfo = try allocBytes(nBytes)
-        defer { deallocBytes(ptr: nInfo.ptr, len: nInfo.len) }
+        return try await performSerialized {
+            let nBytes = try self.postcardEncoder.encode(novel)
+            let nInfo = try self.allocBytes(nBytes)
+            defer { self.deallocBytes(ptr: nInfo.ptr, len: nInfo.len) }
 
-        let cBytes = try self.postcardEncoder.encode(chapter)
-        let cInfo = try allocBytes(cBytes)
-        defer { deallocBytes(ptr: cInfo.ptr, len: cInfo.len) }
+            let cBytes = try self.postcardEncoder.encode(chapter)
+            let cInfo = try self.allocBytes(cBytes)
+            defer { self.deallocBytes(ptr: cInfo.ptr, len: cInfo.len) }
 
-        let result = try await self.executeExportAsync(
-            "get_chapter_content",
-            args: [
-                .i32(UInt32(bitPattern: nInfo.ptr)), .i32(UInt32(bitPattern: nInfo.len)),
-                .i32(UInt32(bitPattern: cInfo.ptr)), .i32(UInt32(bitPattern: cInfo.len))
-            ])
+            let result = try self.executeExport(
+                "get_chapter_content",
+                args: [
+                    .i32(UInt32(bitPattern: nInfo.ptr)), .i32(UInt32(bitPattern: nInfo.len)),
+                    .i32(UInt32(bitPattern: cInfo.ptr)), .i32(UInt32(bitPattern: cInfo.len))
+                ])
 
-        guard let resultVal = result.first, case .i64(let packed) = resultVal else {
-            throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            guard let resultVal = result.first, case .i64(let packed) = resultVal else {
+                throw ItoError.wasmTrap("Expected i64 packed pointer response from Wasm layer")
+            }
+
+            let responseLen = Int(packed & 0xFFFF_FFFF)
+            let responsePtr = Int(packed >> 32)
+            defer {
+                self.deallocBytes(
+                    ptr: Int32(bitPattern: UInt32(responsePtr)),
+                    len: Int32(bitPattern: UInt32(responseLen)))
+            }
+
+            let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
+            return try self.postcardDecoder.decode([Page].self, from: responseBytes)
         }
-
-        let responseLen = Int(packed & 0xFFFF_FFFF)
-        let responsePtr = Int(packed >> 32)
-        defer {
-            deallocBytes(
-                ptr: Int32(bitPattern: UInt32(responsePtr)),
-                len: Int32(bitPattern: UInt32(responseLen)))
-        }
-
-        let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
-        return try self.postcardDecoder.decode([Page].self, from: responseBytes)
     }
 }
