@@ -46,7 +46,6 @@ public enum Setting: Codable, Sendable, PostcardEnumMarker {
     }
 }
 
-
 public struct PluginInfo: Codable, Sendable {
     public let id: String
     public let name: String
@@ -62,12 +61,16 @@ public struct PluginInfo: Codable, Sendable {
     public let author: String?
     public let description: String?
     public let tags: [String]?
+    public let archived: Bool?
+    public let archivedReason: String?
+    public let archivedDate: String?
 
     public init(
         id: String, name: String, version: String, minAppVersion: String, url: String? = nil,
         sourceUrl: String? = nil, contentRating: ContentRating? = nil,
         nsfw: Int? = nil, language: String? = nil, languages: [String]? = nil,
-        type: PluginType = .manga, author: String? = nil, description: String? = nil, tags: [String]? = nil
+        type: PluginType = .manga, author: String? = nil, description: String? = nil, tags: [String]? = nil,
+        archived: Bool? = nil, archivedReason: String? = nil, archivedDate: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -83,12 +86,15 @@ public struct PluginInfo: Codable, Sendable {
         self.author = author
         self.description = description
         self.tags = tags
+        self.archived = archived
+        self.archivedReason = archivedReason
+        self.archivedDate = archivedDate
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, version, minAppVersion = "min_app_version", url, sourceUrl, contentRating, nsfw, language, languages, type, author, description, tags
+        case id, name, version, minAppVersion = "min_app_version", url, sourceUrl, contentRating, nsfw, language, languages, type, author, description, tags, archived, archivedReason = "archived_reason", archivedDate = "archived_date"
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
@@ -113,6 +119,9 @@ public struct PluginInfo: Codable, Sendable {
         self.author = try container.decodeIfPresent(String.self, forKey: .author)
         self.description = try container.decodeIfPresent(String.self, forKey: .description)
         self.tags = try container.decodeIfPresent([String].self, forKey: .tags)
+        self.archived = try container.decodeIfPresent(Bool.self, forKey: .archived)
+        self.archivedReason = try container.decodeIfPresent(String.self, forKey: .archivedReason)
+        self.archivedDate = try container.decodeIfPresent(String.self, forKey: .archivedDate)
     }}
 
 public enum ContentRating: Int32, Codable, Sendable, PostcardEnumMarker {

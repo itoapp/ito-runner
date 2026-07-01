@@ -15,13 +15,13 @@ public struct PostcardMapCoded<Key: Hashable & Codable, Value: Codable>: Codable
     public init(from decoder: Decoder) throws {
         // PostcardDecoder uses the PostcardMapDecodable conformance to set the map flag.
         var container = try decoder.unkeyedContainer()
-        
+
         guard let totalItems = container.count else {
             throw ItoError.postcardDecodingError("Map missing count header")
         }
-        
+
         let entries = totalItems / 2
-        let capacity = min(entries, 1000) 
+        let capacity = min(entries, 1000)
         var dict = [Key: Value](minimumCapacity: capacity)
 
         for _ in 0..<entries {

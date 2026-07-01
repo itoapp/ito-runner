@@ -255,8 +255,6 @@ public actor ItoRunner {
         }
     }
 
-
-
     // MARK: - Core Execution API
 
     /// Executes `get_home()`
@@ -322,7 +320,6 @@ public actor ItoRunner {
         }
     }
 
-
     /// Executes `handle_url()` if exported by the plugin
     public func handleUrl(_ url: String) async throws -> LinkValue? {
         return try await performSerialized {
@@ -331,7 +328,7 @@ public actor ItoRunner {
 
             let (urlPtr, urlLen) = try self.allocString(url)
             let result = try self.executeExport("handle_url", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
-            
+
             guard let resultVal = result.first, case .i64(let packed) = resultVal else {
                 throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_url")
             }
@@ -355,7 +352,7 @@ public actor ItoRunner {
 
             let (urlPtr, urlLen) = try self.allocString(url)
             let result = try self.executeExport("handle_image", args: [.i32(UInt32(bitPattern: urlPtr)), .i32(UInt32(bitPattern: urlLen))])
-            
+
             guard let resultVal = result.first, case .i64(let packed) = resultVal else {
                 throw ItoError.wasmTrap("Expected i64 packed pointer response from handle_image")
             }

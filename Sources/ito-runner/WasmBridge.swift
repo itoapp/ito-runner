@@ -144,7 +144,7 @@ public class WasmBridge {
             do {
                 let request = try self.runner.postcardDecoder.decode(
                     NetRequest.self, from: requestBytes)
-                    
+
                 let options = try self.runner.postcardDecoder.decode(
                     NetOptions.self, from: optBytes)
 
@@ -628,7 +628,7 @@ public class WasmBridge {
         }
 
         let envGetLanguages = Function(store: store, parameters: [], results: [.i64]) {
-            [weak self] caller, args in
+            [weak self] caller, _ in
             guard let self = self else { return [] }
 
             guard let alloc = caller.instance?.exports[function: "alloc"]
@@ -801,7 +801,6 @@ public class WasmBridge {
             self.pendingWebviewResponseBytes = nil
             return []
         }
-
 
         let imports: Imports = [
             "ito:core/net": [

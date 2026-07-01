@@ -18,14 +18,14 @@ public actor DescriptorRegistry {
     /// - Returns: The generated generic descriptor ID.
     public func store(_ object: Any) -> UInt32 {
         var id = nextID
-        
+
         // Hardening: Search for a free ID if the current one is taken
         while storage[id] != nil {
             nextID &+= 1
             if nextID == 0 { nextID = 1 }
             id = nextID
         }
-        
+
         storage[id] = object
         nextID &+= 1 // Safely wrap around if we ever reach UInt32.max
 
